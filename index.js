@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -23,7 +23,9 @@ const URL_RULES = RULES.map(([label, domain, newHost]) => {
   const esc = domain.replace(/\./g, '\\.');
   return {
     label,
-    pattern: new RegExp(`https?://(?:www\\.)?${esc}/([^\\s]+)`, 'gi'),
+    // Scheme optional. Lookbehind rejects a preceding domain char so the domain
+    // won't match inside a larger one ("x.com" in "fix.com", "tiktok" in "vt.tiktok").
+    pattern: new RegExp(`(?<![\\w.@-])(?:https?://)?(?:www\\.)?${esc}/([^\\s]+)`, 'gi'),
     replace: (match, path) => `https://${newHost}/${path}`,
   };
 });
@@ -84,43 +86,19 @@ client.on('messageCreate', async (message) => {
   // Quick early-exit: only process if a known domain is in the message
   if (!TRIGGER.test(content)) return;
 
-  const { newText, replaced } = applyReplacements(content);
+  const { replaced } = applyReplacements(content);
 
   // Nothing changed — skip
   if (replaced.length === 0) return;
 
   try {
-    // Build an embed showing what was replaced
-    const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setAuthor({
-        name: message.author.displayName || message.author.username,
-        iconURL: message.author.displayAvatarURL({ dynamic: true }),
-      })
-      .setDescription(newText)
-      .setFooter({ text: '🔁 Links replaced for better media embeds' })
-      .setTimestamp();
-
-    // Add a field for each replaced URL (up to 5 to stay within embed limits)
-    const shown = replaced.slice(0, 5);
-    for (const r of shown) {
-      embed.addFields({
-        name: `${r.label}`,
-        value: `~~${r.original}~~\n→ ${r.converted}`,
-        inline: false,
-      });
-    }
-    if (replaced.length > 5) {
-      embed.addFields({
-        name: `…and ${replaced.length - 5} more`,
-        value: 'Additional links were also replaced.',
-        inline: false,
-      });
-    }
-
-    // Delete original message and repost via embed
-    await message.delete();
-    await message.channel.send({ embeds: [embed] });
+    // Keep the original, just strip its auto-embed, then reply with the
+    // converted links (which Discord auto-embeds). No ping on the reply.
+    await message.suppressEmbeds(true);
+    await message.reply({
+      content: replaced.map((r) => r.converted).join('\n'),
+      allowedMentions: { repliedUser: false },
+    });
 
   } catch (err) {
     console.error('Error processing message:', err);
