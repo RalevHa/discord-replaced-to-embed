@@ -9,7 +9,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "discord.js": "^14.15.3"
+    "@upstash/redis": "^1.38.0",
+    "discord-api-types": "^0.38.49",
+    "discord.js": "^14.26.4"
   },
   "engines": {
     "node": ">=18.0.0"

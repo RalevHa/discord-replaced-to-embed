@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { applyReplacements, TRIGGER } = require('./index');
+// Pure link logic lives in src/rules.js; importing it directly avoids booting Discord.
+// (`./index` re-exports the same functions, so either import works.)
+const { applyReplacements, TRIGGER } = require('./src/rules');
 
 // Each case: [description, input, expectedOutput, expectedLabels]
 // expectedLabels = [] means "nothing should change".
