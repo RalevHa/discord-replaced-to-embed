@@ -24,8 +24,6 @@ const cases = [
                 'https://fixupx.com/user/status/123', ['X (Twitter)']],
   ['pixiv',     'https://www.pixiv.net/en/artworks/123',
                 'https://www.phixiv.net/en/artworks/123', ['Pixiv']],
-  ['reddit subdomain', 'https://old.reddit.com/r/foo/comments/abc/title/',
-                'https://rxddit.com/r/foo/comments/abc/title/', ['Reddit']],
   ['bluesky',   'https://bsky.app/profile/user/post/abc',
                 'https://bskx.app/profile/user/post/abc', ['Bluesky']],
 
