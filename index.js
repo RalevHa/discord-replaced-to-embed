@@ -1,3 +1,4 @@
+const http = require('http');
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
@@ -112,3 +113,9 @@ if (!token) {
 }
 
 client.login(token);
+
+// ponytail: minimal HTTP server so Render binds a port and UptimeRobot can ping /
+const port = process.env.PORT || 3000;
+http
+  .createServer((req, res) => res.end('ok'))
+  .listen(port, () => console.log(`Health server on :${port}`));

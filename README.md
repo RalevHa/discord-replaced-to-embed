@@ -61,6 +61,7 @@ node -r dotenv/config index.js
 |---|---|---|
 | `DISCORD_BOT_TOKEN` | ✅ | Your bot token. |
 | `ALLOWED_GUILD_IDS` | — | Comma-separated server (guild) IDs the bot acts in. Empty = all servers. |
+| `PORT` | — | Port for the health-check HTTP server (any path returns `ok`). Defaults to `3000`; Render sets this automatically. |
 
 To get a server ID: enable **Developer Mode** (User Settings → Advanced), then right-click the server → **Copy Server ID**.
 
@@ -69,6 +70,16 @@ ALLOWED_GUILD_IDS=123456789012345678,987654321098765432
 ```
 
 > ⚠️ Never commit `.env` — it holds your token. It's already in `.gitignore`. If a token is ever exposed, regenerate it in the Developer Portal.
+
+## Deploy (Render free tier + UptimeRobot)
+
+The bot runs a tiny HTTP server so Render's free **Web Service** has a port to bind, and so UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
+
+1. On [Render](https://render.com): **New → Web Service**, connect this repo.
+   - Build command: `npm install`
+   - Start command: `node index.js`
+   - Add env var `DISCORD_BOT_TOKEN` (Render provides `PORT` itself).
+2. On [UptimeRobot](https://uptimerobot.com): add an **HTTP(s)** monitor pointing at your Render URL (e.g. `https://your-app.onrender.com/`), interval 5 min. Any path returns `ok`.
 
 ## How It Works
 
