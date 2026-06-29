@@ -12,7 +12,6 @@ const client = new Client({
 // [label, domain, newHost] — matches https://(www.)domain/PATH, keeps PATH.
 // Order matters: more specific subdomains (vt.tiktok.com) before their parent.
 const RULES = [
-  ['Facebook',          'facebook.com',  'facebed.com'],
   ['TikTok (vt short)', 'vt.tiktok.com', 'a.tnktok.com'],
   ['TikTok',            'tiktok.com',    'a.tnktok.com'],
   ['Bilibili',          'bilibili.com',  'www.vxbilibili.com'],
