@@ -7,7 +7,6 @@ const RULES = [
   ['Bilibili',          'bilibili.com',  'www.vxbilibili.com'],
   ['X (Twitter)',       'x.com',         'fixupx.com'],
   ['Pixiv',             'pixiv.net',     'www.phixiv.net'],
-  ['Reddit',            'reddit.com',    'rxddit.com'],
   ['Bluesky',           'bsky.app',      'bskx.app'],
 ];
 
