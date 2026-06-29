@@ -4,6 +4,7 @@ Automatically detects supported social-media links in messages, suppresses their
 auto-embed, and replies with embeddable alternatives so they preview properly in Discord.
 
 - 🔗 **Auto-converts** links from 7 platforms (see [Supported Platforms](#supported-platforms))
+- 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
 - 💾 **Optional persistence** via Upstash Redis (survives restarts/redeploys)
 - ☁️ **Deploy-ready** for Render's free tier with a built-in health check
@@ -56,7 +57,8 @@ In the **OAuth2 → URL Generator** tab:
 
 - **Scopes:** `bot`, `applications.commands` *(the second is required for slash commands)*
 - **Bot Permissions:** Read Messages / View Channels, Send Messages,
-  Manage Messages *(to suppress the original embed)*, Embed Links
+  Manage Messages *(to suppress embeds and delete spam)*, Embed Links,
+  Moderate Members *(to time out spammers — see [Spam protection](#spam-protection))*
 
 Open the generated URL to invite the bot to your server.
 
@@ -87,6 +89,13 @@ npm start
 | `PORT` | — | Port for the health-check HTTP server (any path returns `ok`). Defaults to `3000`; Render sets this automatically. |
 | `UPSTASH_REDIS_REST_URL` | — | Upstash Redis REST URL. Enables persistence (see below). |
 | `UPSTASH_REDIS_REST_TOKEN` | — | Upstash Redis REST token (pairs with the URL above). |
+| `SPAM_DETECTION_ENABLED` | — | Set to `false` to disable spam detection. Defaults to enabled. |
+| `SPAM_CHANNEL_THRESHOLD` | — | Distinct channels the same text must hit to trip detection. Default `3`. |
+| `SPAM_WINDOW_SECONDS` | — | Sliding time window for the channel count. Default `15`. |
+| `SPAM_TIMEOUT_MINUTES` | — | How long to time the spammer out. Default `10`. |
+| `MOD_LOG_CHANNEL_ID` | — | Channel ID for moderation alerts. Empty = console only. |
+| `SPAM_TRUSTED_ROLE_IDS` | — | Comma-separated role IDs exempt from spam detection. |
+| `SPAM_IGNORED_CHANNEL_IDS` | — | Comma-separated channel IDs to skip. |
 
 To get a server ID, enable **Developer Mode** (User Settings → Advanced), then right-click
 the server → **Copy Server ID**:
@@ -131,6 +140,29 @@ UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
    - **Suppresses** the original message's auto-embed (the broken preview), and
    - **Replies** with the converted links — which Discord auto-embeds — without pinging the author.
 
+## Spam protection
+
+Hijacked accounts typically blast the **same message across many channels within seconds**.
+The bot watches for exactly that pattern: when one member posts the same text (normalized —
+case and whitespace insensitive) in `SPAM_CHANNEL_THRESHOLD`+ distinct channels within
+`SPAM_WINDOW_SECONDS`, it:
+
+1. **Times the member out** for `SPAM_TIMEOUT_MINUTES` (reversible — the account belongs to a
+   real, compromised member).
+2. **Deletes** the offending messages across the affected channels.
+3. **Alerts moderators** with an embed in `MOD_LOG_CHANNEL_ID` (if set).
+
+Tracking is per `(server, member)` and in-memory — flooding happens in seconds, so it needs
+no persistence and works without Redis. The count of handled incidents is shown in `/stats`.
+
+**Never actioned:** bots, the server owner, anyone with Administrator / Manage Server /
+Moderate Members, members holding a `SPAM_TRUSTED_ROLE_IDS` role, and messages in
+`SPAM_IGNORED_CHANNEL_IDS`. Matching on identical text keeps false positives near zero.
+
+> The bot needs the **Moderate Members** and **Manage Messages** permissions, and its role
+> must sit **above** the members it should be able to time out. If a timeout fails, the
+> mod-log embed says so. Set `SPAM_DETECTION_ENABLED=false` to turn the feature off.
+
 ## Project Structure
 
 ```
@@ -138,19 +170,22 @@ index.js                  Entry point — starts the bot, re-exports rules for t
 src/
   config.js               All environment-variable parsing (one object)
   rules.js                Pure link logic: RULES, TRIGGER, applyReplacements (no deps)
+  spam.js                 Pure cross-channel flood detection: createFloodTracker (no deps)
+  moderation.js           Discord-side spam response: isExempt, handleFlood (timeout/delete/alert)
   storage.js              Persistence behind one interface (Upstash Redis ⇄ in-memory)
   bot.js                  Wires up the client, events, command registration, health server
   events/
-    messageCreate.js      Auto-conversion handler
+    messageCreate.js      Auto-conversion + spam-detection handler
     interactionCreate.js  Slash-command dispatcher
   commands/
     index.js              Command registry (the list every command is pulled from)
     ping.js  convert.js  sources.js  toggle.js  stats.js  help.js
+  spam.test.js            Unit tests for the flood-detection logic
 index.test.js             Unit tests for the link logic
 ```
 
 Each event/command handler receives a shared context `{ client, config, storage, commands,
-rules }`, so nothing reaches into `process.env` or globals directly.
+rules, spam }`, so nothing reaches into `process.env` or globals directly.
 
 ## Development
 
