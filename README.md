@@ -30,7 +30,7 @@ Any leading subdomains (`www.`, `vt.`, `vm.`, `old.`, …) are matched and dropp
 
 ### 2. Invite the Bot to Your Server
 In the **OAuth2 → URL Generator** tab:
-- Scopes: `bot`
+- Scopes: `bot`, `applications.commands` *(the second is required for slash commands)*
 - Bot Permissions:
   - ✅ Read Messages / View Channels
   - ✅ Send Messages
@@ -67,6 +67,10 @@ node -r dotenv/config index.js
 | `DISCORD_BOT_TOKEN` | ✅ | Your bot token. |
 | `ALLOWED_GUILD_IDS` | — | Comma-separated server (guild) IDs the bot acts in. Empty = all servers. |
 | `PORT` | — | Port for the health-check HTTP server (any path returns `ok`). Defaults to `3000`; Render sets this automatically. |
+| `UPSTASH_REDIS_REST_URL` | — | Upstash Redis REST URL. Enables persistence of `/toggle` state and `/stats` across restarts/redeploys. |
+| `UPSTASH_REDIS_REST_TOKEN` | — | Upstash Redis REST token (pairs with the URL above). |
+
+If the two `UPSTASH_*` vars are unset, the bot still runs — but `/toggle` state and `/stats` are kept in memory and reset whenever the process restarts.
 
 To get a server ID: enable **Developer Mode** (User Settings → Advanced), then right-click the server → **Copy Server ID**.
 
@@ -84,7 +88,31 @@ The bot runs a tiny HTTP server so Render's free **Web Service** has a port to b
    - Build command: `npm install`
    - Start command: `node index.js`
    - Add env var `DISCORD_BOT_TOKEN` (Render provides `PORT` itself).
+   - *(Optional)* Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` so `/toggle` and `/stats` survive redeploys.
 2. On [UptimeRobot](https://uptimerobot.com): add an **HTTP(s)** monitor pointing at your Render URL (e.g. `https://your-app.onrender.com/`), interval 5 min. Any path returns `ok`.
+
+## Slash Commands
+
+Registered automatically on startup (per-guild when `ALLOWED_GUILD_IDS` is set — instant — otherwise globally, which can take up to ~1h to appear).
+
+| Command | Who | Description |
+|---|---|---|
+| `/convert <url>` | everyone | Manually convert link(s) in the given text. |
+| `/sources` | everyone | List the supported platforms. |
+| `/stats` | everyone | Conversions counted (all-time with Upstash, else since last restart). |
+| `/ping` | everyone | Bot round-trip + WebSocket latency. |
+| `/toggle` | Manage Server | Enable/disable automatic conversion in the current server. |
+| `/help` | everyone | What the bot does and the command list. |
+
+## Persistence (optional, recommended for deploys)
+
+Render's free filesystem is ephemeral, so `/toggle` state and `/stats` are stored in [Upstash Redis](https://upstash.com) (free serverless tier, HTTP-based) when configured:
+
+1. Create a free database at [console.upstash.com](https://console.upstash.com) → **Create Database** (Redis).
+2. From the database page, copy the **REST API** `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+3. Add both as env vars (locally in `.env`, or in the Render dashboard).
+
+Without them the bot falls back to in-memory state (resets on restart).
 
 ## How It Works
 
@@ -94,9 +122,29 @@ The bot runs a tiny HTTP server so Render's free **Web Service** has a port to b
    - **Suppresses** the original message's auto-embed (the broken preview)
    - **Replies** with the converted links — which Discord auto-embeds — without pinging the author
 
+## Project Structure
+
+```
+index.js                  Entry point — starts the bot, re-exports rules for tests
+src/
+  config.js               All environment-variable parsing (one object)
+  rules.js                Pure link logic: RULES, TRIGGER, applyReplacements (no deps)
+  storage.js              Persistence behind one interface (Upstash Redis ⇄ in-memory)
+  bot.js                  Wires up the client, events, command registration, health server
+  events/
+    messageCreate.js      Auto-conversion handler
+    interactionCreate.js  Slash-command dispatcher
+  commands/
+    index.js              Command registry (the list every command is pulled from)
+    ping.js  convert.js  sources.js  toggle.js  stats.js  help.js
+index.test.js             Unit tests for the link logic
+```
+
+Each event/command handler receives a shared context `{ client, config, storage, commands, rules }`, so nothing reaches into `process.env` or globals directly.
+
 ## Adding More Rules
 
-Add a one-liner to the `RULES` array in `index.js` — `[label, domain, newHost]`. The match pattern and early-exit trigger build themselves:
+Add a one-liner to the `RULES` array in `src/rules.js` — `[label, domain, newHost]`. The match pattern and early-exit trigger build themselves:
 
 ```js
 const RULES = [
@@ -107,9 +155,29 @@ const RULES = [
 
 Just list the bare domain — subdomains (`www.`, `vt.`, `m.`, …) are handled automatically, so there's no ordering requirement.
 
+## Adding a Slash Command
+
+1. Create `src/commands/<name>.js` exporting `{ data, execute }`:
+
+   ```js
+   const { SlashCommandBuilder } = require('discord.js');
+
+   module.exports = {
+     data: new SlashCommandBuilder().setName('hello').setDescription('Say hi'),
+     // ctx = { client, config, storage, commands, rules }
+     async execute(interaction, ctx) {
+       await interaction.reply({ content: 'Hi!', ephemeral: true });
+     },
+   };
+   ```
+
+2. Add it to the `list` in `src/commands/index.js`.
+
+That's it — registration, dispatch, and the `/help` listing all read from the registry automatically.
+
 ## Testing
 
-The link-rewriting logic is unit-tested with Node's built-in test runner (no extra dependencies). The bot's Discord/HTTP startup only runs when `index.js` is executed directly, so the rules can be imported and tested in isolation.
+The link-rewriting logic is unit-tested with Node's built-in test runner (no extra dependencies). It lives in `src/rules.js` with zero dependencies, so it imports and runs without booting Discord.
 
 ```bash
 npm test
