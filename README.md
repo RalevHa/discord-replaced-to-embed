@@ -1,17 +1,22 @@
 # Discord Link Replacer Bot
 
-Automatically detects supported links in messages, replaces them with embeddable alternatives, and reposts them as a clean embed showing the original author.
+Automatically detects supported social links in messages, suppresses their broken auto-embed, and replies with embeddable alternatives so they preview properly.
 
 ## Replacement Rules
 
+Any leading subdomains (`www.`, `vt.`, `vm.`, `old.`, …) are matched and dropped, so a single rule per platform covers every link form.
+
 | Platform | Input | Output |
 |---|---|---|
-| Facebook | `https://(www.)facebook.com/PATH` | `https://facebed.com/PATH` |
-| TikTok (vt short) | `https://vt.tiktok.com/PATH` | `https://a.tnktok.com/PATH` |
-| TikTok | `https://(www.)tiktok.com/PATH` | `https://a.tnktok.com/PATH` |
-| Bilibili | `https://(www.)bilibili.com/PATH` | `https://www.vxbilibili.com/PATH` |
-| X (Twitter) | `https://(www.)x.com/PATH` | `https://fixupx.com/PATH` |
-| Pixiv | `https://(www.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
+| TikTok | `https://(sub.)tiktok.com/PATH` | `https://a.tnktok.com/PATH` |
+| Bilibili | `https://(sub.)bilibili.com/PATH` | `https://www.vxbilibili.com/PATH` |
+| X (Twitter) | `https://(sub.)x.com/PATH` | `https://fixupx.com/PATH` |
+| Pixiv | `https://(sub.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
+| Reddit | `https://(sub.)reddit.com/PATH` | `https://rxddit.com/PATH` |
+| Threads | `https://(sub.)threads.net/PATH` | `https://vxthreads.net/PATH` |
+| Bluesky | `https://(sub.)bsky.app/PATH` | `https://bskx.app/PATH` |
+
+> These embed services are community-run and occasionally rename or go down. If a platform stops embedding, just swap the new host in its rule.
 
 ## Setup
 
@@ -86,8 +91,8 @@ The bot runs a tiny HTTP server so Render's free **Web Service** has a port to b
 1. Bot listens for every message in allowed servers
 2. Checks if the message contains a supported link
 3. If found, it:
-   - **Deletes** the original message
-   - **Reposts** an embed with the author's name/avatar, the converted links, and a summary of what was changed
+   - **Suppresses** the original message's auto-embed (the broken preview)
+   - **Replies** with the converted links — which Discord auto-embeds — without pinging the author
 
 ## Adding More Rules
 
@@ -96,8 +101,18 @@ Add a one-liner to the `RULES` array in `index.js` — `[label, domain, newHost]
 ```js
 const RULES = [
   // ...
-  ['Instagram', 'instagram.com', 'ddinstagram.com'],
+  ['Instagram', 'instagram.com', 'kkinstagram.com'],
 ];
 ```
 
-Order matters: list more specific subdomains (e.g. `vt.tiktok.com`) before their parent domain.
+Just list the bare domain — subdomains (`www.`, `vt.`, `m.`, …) are handled automatically, so there's no ordering requirement.
+
+## Testing
+
+The link-rewriting logic is unit-tested with Node's built-in test runner (no extra dependencies). The bot's Discord/HTTP startup only runs when `index.js` is executed directly, so the rules can be imported and tested in isolation.
+
+```bash
+npm test
+```
+
+Add a case by appending a `[description, input, expectedOutput, expectedLabels]` row to the `cases` array in `index.test.js`.
