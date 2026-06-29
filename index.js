@@ -1,31 +1,22 @@
-const http = require('http');
-const { Client, GatewayIntentBits } = require('discord.js');
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
-
-// [label, domain, newHost] — matches https://(www.)domain/PATH, keeps PATH.
-// Order matters: more specific subdomains (vt.tiktok.com) before their parent.
+// [label, domain, newHost] — matches https://(any.subdomains.)domain/PATH, keeps PATH.
 const RULES = [
-  ['TikTok (vt short)', 'vt.tiktok.com', 'a.tnktok.com'],
   ['TikTok',            'tiktok.com',    'a.tnktok.com'],
   ['Bilibili',          'bilibili.com',  'www.vxbilibili.com'],
   ['X (Twitter)',       'x.com',         'fixupx.com'],
   ['Pixiv',             'pixiv.net',     'www.phixiv.net'],
+  ['Reddit',            'reddit.com',    'rxddit.com'],
+  ['Threads',           'threads.net',   'vxthreads.net'],
+  ['Bluesky',           'bsky.app',      'bskx.app'],
 ];
 
 const URL_RULES = RULES.map(([label, domain, newHost]) => {
   const esc = domain.replace(/\./g, '\\.');
   return {
     label,
-    // Scheme optional. Lookbehind rejects a preceding domain char so the domain
-    // won't match inside a larger one ("x.com" in "fix.com", "tiktok" in "vt.tiktok").
-    pattern: new RegExp(`(?<![\\w.@-])(?:https?://)?(?:www\\.)?${esc}/([^\\s]+)`, 'gi'),
+    // Scheme + any leading subdomains optional (so vt./vm./www. all match and get
+    // dropped). Lookbehind rejects a preceding domain char so the domain won't match
+    // inside a larger one ("x.com" in "fix.com", "tiktok" in "nottiktok.com").
+    pattern: new RegExp(`(?<![\\w.@-])(?:https?://)?(?:[\\w-]+\\.)*?${esc}/([^\\s]+)`, 'gi'),
     replace: (match, path) => `https://${newHost}/${path}`,
   };
 });
@@ -65,56 +56,75 @@ function applyReplacements(text) {
   return { newText, replaced };
 }
 
-client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-});
+// Only start the bot when run directly (`node index.js`), not when require()d by tests.
+// discord.js / http are loaded here so the pure rule logic above stays dependency-free
+// and importable without installing anything.
+if (require.main === module) {
+  const http = require('http');
+  const { Client, GatewayIntentBits } = require('discord.js');
 
-// Only act in these server (guild) IDs. Comma-separated in env; empty = all servers.
-const ALLOWED_GUILDS = (process.env.ALLOWED_GUILD_IDS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
+  });
 
-client.on('messageCreate', async (message) => {
-  // Ignore bots and DMs
-  if (message.author.bot) return;
-  if (!message.guild) return;
-  if (ALLOWED_GUILDS.length && !ALLOWED_GUILDS.includes(message.guild.id)) return;
+  client.once('ready', () => {
+    console.log(`✅ Logged in as ${client.user.tag}`);
+  });
 
-  const content = message.content;
+  // Only act in these server (guild) IDs. Comma-separated in env; empty = all servers.
+  const ALLOWED_GUILDS = (process.env.ALLOWED_GUILD_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  // Quick early-exit: only process if a known domain is in the message
-  if (!TRIGGER.test(content)) return;
+  client.on('messageCreate', async (message) => {
+    // Ignore bots and DMs
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (ALLOWED_GUILDS.length && !ALLOWED_GUILDS.includes(message.guild.id)) return;
 
-  const { replaced } = applyReplacements(content);
+    const content = message.content;
 
-  // Nothing changed — skip
-  if (replaced.length === 0) return;
+    // Quick early-exit: only process if a known domain is in the message
+    if (!TRIGGER.test(content)) return;
 
-  try {
-    // Keep the original, just strip its auto-embed, then reply with the
-    // converted links (which Discord auto-embeds). No ping on the reply.
-    await message.suppressEmbeds(true);
-    await message.reply({
-      content: replaced.map((r) => r.converted).join('\n'),
-      allowedMentions: { repliedUser: false },
-    });
+    const { replaced } = applyReplacements(content);
 
-  } catch (err) {
-    console.error('Error processing message:', err);
+    // Nothing changed — skip
+    if (replaced.length === 0) return;
+
+    try {
+      // Keep the original, just strip its auto-embed, then reply with the
+      // converted links (which Discord auto-embeds). No ping on the reply.
+      await message.suppressEmbeds(true);
+      await message.reply({
+        content: replaced.map((r) => r.converted).join('\n'),
+        allowedMentions: { repliedUser: false },
+      });
+
+    } catch (err) {
+      console.error('Error processing message:', err);
+    }
+  });
+
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    console.error('❌  DISCORD_BOT_TOKEN environment variable is not set.');
+    process.exit(1);
   }
-});
 
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!token) {
-  console.error('❌  DISCORD_BOT_TOKEN environment variable is not set.');
-  process.exit(1);
+  client.login(token);
+
+  // ponytail: minimal HTTP server so Render binds a port and UptimeRobot can ping /
+  const port = process.env.PORT || 3000;
+  http
+    .createServer((req, res) => res.end('ok'))
+    .listen(port, () => console.log(`Health server on :${port}`));
 }
 
-client.login(token);
-
-// ponytail: minimal HTTP server so Render binds a port and UptimeRobot can ping /
-const port = process.env.PORT || 3000;
-http
-  .createServer((req, res) => res.end('ok'))
-  .listen(port, () => console.log(`Health server on :${port}`));
+// Exported for tests (see index.test.js)
+module.exports = { applyReplacements, RULES, TRIGGER };

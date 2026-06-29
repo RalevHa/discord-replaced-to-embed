@@ -1,11 +1,12 @@
 {
   "name": "discord-link-replacer-bot",
   "version": "1.0.0",
-  "description": "Replaces Facebook/TikTok links with embeddable alternatives",
+  "description": "Replaces social media links (TikTok, X, Bilibili, Pixiv, Reddit, Threads, Bluesky) with embeddable alternatives",
   "main": "index.js",
   "scripts": {
     "start": "node --env-file=.env index.js",
-    "dev": "node --watch --env-file=.env index.js"
+    "dev": "node --watch --env-file=.env index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "discord.js": "^14.15.3"
