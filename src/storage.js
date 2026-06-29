@@ -10,7 +10,6 @@ const KEYS = {
   total: 'stats:total', // integer counter
   byLabel: 'stats:by_label', // hash: label -> count
   since: 'stats:since', // ms timestamp, set once
-  spamCaught: 'stats:spam_caught', // integer counter of flood incidents handled
 };
 
 /**
@@ -29,7 +28,7 @@ function createStorage(config) {
   // In-memory cache of disabled guilds (always used for fast reads).
   const disabledGuilds = new Set();
   // In-memory stats — the source of truth only when Redis is absent.
-  const mem = { startedAt: Date.now(), total: 0, byLabel: {}, spamCaught: 0 };
+  const mem = { startedAt: Date.now(), total: 0, byLabel: {} };
 
   return {
     /** Whether state will survive a restart. */
@@ -80,40 +79,18 @@ function createStorage(config) {
       pipe.exec().catch((err) => console.error('Failed to write stats to Redis:', err));
     },
 
-    /**
-     * Record one handled cross-channel spam incident. Fire-and-forget like recordStats.
-     */
-    recordSpamCatch() {
-      if (!redis) {
-        mem.spamCaught += 1;
-        return;
-      }
-      redis
-        .incr(KEYS.spamCaught)
-        .catch((err) => console.error('Failed to write spam counter to Redis:', err));
-    },
-
     /** Read aggregate stats for the /stats command. */
     async getStats() {
-      if (!redis) {
-        return {
-          total: mem.total,
-          byLabel: mem.byLabel,
-          since: mem.startedAt,
-          spamCaught: mem.spamCaught,
-        };
-      }
-      const [total, byLabel, since, spamCaught] = await Promise.all([
+      if (!redis) return { total: mem.total, byLabel: mem.byLabel, since: mem.startedAt };
+      const [total, byLabel, since] = await Promise.all([
         redis.get(KEYS.total),
         redis.hgetall(KEYS.byLabel),
         redis.get(KEYS.since),
-        redis.get(KEYS.spamCaught),
       ]);
       return {
         total: Number(total) || 0,
         byLabel: byLabel || {},
         since: Number(since) || mem.startedAt,
-        spamCaught: Number(spamCaught) || 0,
       };
     },
   };

@@ -15,7 +15,7 @@ module.exports = {
     .setDescription('Show how many links have been converted'),
 
   async execute(interaction, { storage }) {
-    const { total, byLabel, since, spamCaught } = await storage.getStats();
+    const { total, byLabel, since } = await storage.getStats();
 
     const elapsed = formatElapsed(Date.now() - since);
     const breakdown = Object.entries(byLabel)
@@ -29,8 +29,7 @@ module.exports = {
       content:
         `📊 **Conversion stats** (${period})\n` +
         `Tracking for: \`${elapsed}\`\n` +
-        `Total links converted: \`${total}\`\n` +
-        `Spam floods blocked: \`${spamCaught || 0}\`` +
+        `Total links converted: \`${total}\`` +
         (breakdown ? `\n\n${breakdown}` : ''),
       ephemeral: true,
     });
