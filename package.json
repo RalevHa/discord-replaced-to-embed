@@ -4,8 +4,8 @@
   "description": "Replaces Facebook/TikTok links with embeddable alternatives",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "node --env-file=.env index.js",
+    "dev": "node --watch --env-file=.env index.js"
   },
   "dependencies": {
     "discord.js": "^14.15.3"
