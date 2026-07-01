@@ -59,6 +59,28 @@ test('spoilered link stays spoilered in the converted output', () => {
   assert.equal(replaced[0].converted, '||https://fixupx.com/user/status/123||');
 });
 
+test('spoilered link with trailing words before the closing bars', () => {
+  const { replaced } = applyReplacements(
+    '||https://bsky.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k test ปิด||'
+  );
+  assert.equal(replaced.length, 1);
+  assert.equal(
+    replaced[0].converted,
+    '||https://bskx.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||'
+  );
+});
+
+test('spoiler closes right after the link, trailing text stays outside it', () => {
+  const { replaced } = applyReplacements(
+    '||https://bsky.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||test ปิด'
+  );
+  assert.equal(replaced.length, 1);
+  assert.equal(
+    replaced[0].converted,
+    '||https://bskx.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||'
+  );
+});
+
 test('TRIGGER early-exit matches supported domains and skips others', () => {
   assert.ok(TRIGGER.test('hey vt.tiktok.com/x'), 'should detect tiktok');
   assert.ok(!TRIGGER.test('hey example.com/x'), 'should ignore unsupported');
