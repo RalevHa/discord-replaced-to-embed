@@ -3,7 +3,7 @@
 Automatically detects supported social-media links in messages, suppresses their broken
 auto-embed, and replies with embeddable alternatives so they preview properly in Discord.
 
-- 🔗 **Auto-converts** links from 7 platforms (see [Supported Platforms](#supported-platforms))
+- 🔗 **Auto-converts** links from 5 platforms (see [Supported Platforms](#supported-platforms))
 - 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
 - 💾 **Optional persistence** via Upstash Redis (survives restarts/redeploys)
