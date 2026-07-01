@@ -18,7 +18,13 @@ const URL_RULES = RULES.map(([label, domain, newHost]) => {
     // dropped). Lookbehind rejects a preceding domain char so the domain won't match
     // inside a larger one ("x.com" in "fix.com", "tiktok" in "nottiktok.com").
     pattern: new RegExp(`(?<![\\w.@-])(?:https?://)?(?:[\\w-]+\\.)*?${esc}/([^\\s]+)`, 'gi'),
-    replace: (match, path) => `https://${newHost}/${path}`,
+    // Preserve Discord spoiler wrapping (||link||): the path capture greedily
+    // swallows a trailing "||", so strip it and re-wrap the converted URL.
+    replace: (match, path, offset, string) => {
+      const spoiler = path.endsWith('||') && string.slice(Math.max(0, offset - 2), offset) === '||';
+      const url = `https://${newHost}/${spoiler ? path.slice(0, -2) : path}`;
+      return spoiler ? `||${url}||` : url;
+    },
   };
 });
 
@@ -40,8 +46,7 @@ function applyReplacements(text) {
     const matches = [...text.matchAll(rule.pattern)];
     for (const match of matches) {
       const original = match[0];
-      const converted = match[0].replace(rule.pattern, rule.replace);
-      rule.pattern.lastIndex = 0; // reset after single-match replace
+      const converted = rule.replace(match[0], match[1], match.index, text);
 
       // Only record if the URL actually changed
       if (original !== converted) {

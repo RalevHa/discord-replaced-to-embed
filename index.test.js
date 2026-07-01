@@ -53,6 +53,12 @@ for (const [name, input, expectedOut, expectedLabels] of cases) {
   });
 }
 
+test('spoilered link stays spoilered in the converted output', () => {
+  const { replaced } = applyReplacements('||https://x.com/user/status/123||');
+  assert.equal(replaced.length, 1);
+  assert.equal(replaced[0].converted, '||https://fixupx.com/user/status/123||');
+});
+
 test('TRIGGER early-exit matches supported domains and skips others', () => {
   assert.ok(TRIGGER.test('hey vt.tiktok.com/x'), 'should detect tiktok');
   assert.ok(!TRIGGER.test('hey example.com/x'), 'should ignore unsupported');
