@@ -7,6 +7,7 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const config = require('./config');
 const rules = require('./rules');
 const { createStorage } = require('./storage');
+const { createFloodTracker } = require('./spam');
 const commands = require('./commands');
 const interactionCreate = require('./events/interactionCreate');
 const messageCreate = require('./events/messageCreate');
@@ -38,6 +39,10 @@ function start() {
   }
 
   const storage = createStorage(config);
+  const spam = createFloodTracker({
+    windowMs: config.spamWindowMs,
+    channelThreshold: config.spamChannelThreshold,
+  });
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -47,7 +52,7 @@ function start() {
   });
 
   // Shared context handed to every event/command handler.
-  const ctx = { client, config, storage, commands, rules };
+  const ctx = { client, config, storage, commands, rules, spam };
 
   client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
