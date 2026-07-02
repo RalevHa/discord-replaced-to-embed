@@ -73,6 +73,16 @@ function looksLikeLoginWall(tags) {
   return LOGIN_WALL_MARKERS.some((marker) => text.includes(marker));
 }
 
+// Reels no longer expose an og:video meta tag — the page instead embeds this field
+// (JSON-escaped, e.g. `"browser_native_hd_url":"https:\/\/lookaside.fbsbx.com\/..."`)
+// pointing at a stable lookaside.fbsbx.com crawler-media URL that serves the actual
+// video/mp4 file directly (unlike the DASH CDN URLs elsewhere in the page, which are
+// split into separate video/audio streams and short-lived).
+function extractBrowserNativeVideoUrl(html) {
+  const m = /"browser_native_(?:hd|sd)_url":"([^"]+)"/.exec(html);
+  return m ? m[1].replace(/\\\//g, '/') : null;
+}
+
 /**
  * Fetch a Facebook URL and extract embeddable post data (title, description, image).
  * Returns null if nothing usable came back (login wall, deleted post, network error).
@@ -96,7 +106,8 @@ async function extractFacebookPost(url) {
     });
 
     if (response.ok) {
-      const tags = parseOgTags(await response.text());
+      const html = await response.text();
+      const tags = parseOgTags(html);
       const hasContent = tags['og:title'] || tags['og:description'] || tags['og:image'];
       if (hasContent && !looksLikeLoginWall(tags)) {
         data = {
@@ -105,8 +116,14 @@ async function extractFacebookPost(url) {
           image: tags['og:image'] || null,
           // Reels/videos expose a direct (usually short-lived, signed) file URL here.
           // Posted as plain text it lets Discord's own unfurler render a playable
-          // video, which a bot-built embed can't do (see buildEmbed below).
-          video: tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'] || null,
+          // video, which a bot-built embed can't do (see buildEmbed below). Reels no
+          // longer set these og:video tags at all, so fall back to the browser_native
+          // lookaside URL embedded in the page (see extractBrowserNativeVideoUrl).
+          video:
+            tags['og:video:secure_url'] ||
+            tags['og:video:url'] ||
+            tags['og:video'] ||
+            extractBrowserNativeVideoUrl(html),
           siteName: tags['og:site_name'] || 'Facebook',
           url: tags['og:url'] || key,
         };
