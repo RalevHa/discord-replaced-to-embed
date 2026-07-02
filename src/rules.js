@@ -12,6 +12,10 @@ const RULES = [
   ['Bluesky',           'bsky.app',      'bskx.app'],
 ];
 
+// Facebook is NOT handled here — there's no reliable "fixup" host to redirect to,
+// so it gets a native embed built from scraped Open Graph data instead. See
+// facebook.js and its wiring in events/messageCreate.js.
+
 const URL_RULES = RULES.map(([label, domain, newHost]) => {
   const esc = domain.replace(/\./g, '\\.');
   return {

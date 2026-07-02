@@ -61,3 +61,9 @@ test('TRIGGER early-exit matches supported domains and skips others', () => {
   assert.ok(TRIGGER.test('hey vt.tiktok.com/x'), 'should detect tiktok');
   assert.ok(!TRIGGER.test('hey example.com/x'), 'should ignore unsupported');
 });
+
+// Facebook is handled natively (native embed via facebook.js), not as a rules.js
+// rewrite — see facebook.test.js.
+test('rules.js does not rewrite Facebook links (handled by facebook.js instead)', () => {
+  assert.equal(applyReplacements('https://www.facebook.com/user/posts/123').replaced.length, 0);
+});

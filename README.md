@@ -4,12 +4,24 @@ Automatically detects supported social-media links in messages, suppresses their
 auto-embed, and replies with embeddable alternatives so they preview properly in Discord.
 
 - 🔗 **Auto-converts** links from 7 platforms (see [Supported Platforms](#supported-platforms))
+- 📘 **Native Facebook embeds** — scrapes Open Graph data, no self-hosted proxy required
 - 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
 - 💾 **Optional persistence** via Upstash Redis (survives restarts/redeploys)
 - ☁️ **Deploy-ready** for Render's free tier with a built-in health check
 
-## Supported Platforms
+## Features
+
+### How It Works
+
+1. The bot listens to messages in allowed servers (skipping servers disabled via `/toggle`).
+2. It checks whether the message contains a supported link (rewritable, Facebook, or both).
+3. If so, it:
+   - **Suppresses** the original message's auto-embed (the broken preview), and
+   - **Replies** with the converted links (which Discord auto-embeds) and/or native
+     Facebook embeds, without pinging the author.
+
+### Supported Platforms
 
 Any leading subdomains (`www.`, `vt.`, `vm.`, `old.`, …) are matched and dropped, so a
 single rule per platform covers every link form.
@@ -27,7 +39,47 @@ single rule per platform covers every link form.
 > These embed services are community-run and occasionally rename or go down. If a platform
 > stops embedding, just swap the new host in its rule — see [Adding a platform](#adding-a-platform).
 
-## Slash Commands
+### Facebook (native embed, no proxy needed)
+
+Facebook doesn't have a reliable public "fixup" host to redirect to, so it's handled
+differently from the platforms above: instead of rewriting the link, the bot fetches the post
+itself — spoofing Facebook's own link-preview crawler user-agent — extracts its Open Graph
+tags (title, description, image), and posts a native Discord embed built from that data. No
+self-hosted proxy, no credentials, no headless browser.
+
+- Works out of the box; no configuration required.
+- If the post is behind a login wall (deleted post, private group, or Facebook rate-limiting
+  your server's IP) the bot just leaves the message alone, same as an unsupported link.
+- Results are cached in-memory for 15 minutes so re-shares of the same post don't refetch.
+- Set `FACEBOOK_EMBED_ENABLED=false` to disable this feature entirely.
+
+This only extracts what's in the page's OG tags — title/description/image. It doesn't fetch
+engagement stats (likes/comments) or video files.
+
+### Spam protection
+
+Hijacked accounts typically blast the **same message across many channels within seconds**.
+The bot watches for exactly that pattern: when one member posts the same text (normalized —
+case and whitespace insensitive) in `SPAM_CHANNEL_THRESHOLD`+ distinct channels within
+`SPAM_WINDOW_SECONDS`, it:
+
+1. **Times the member out** for `SPAM_TIMEOUT_MINUTES` (reversible — the account belongs to a
+   real, compromised member).
+2. **Deletes** the offending messages across the affected channels.
+3. **Alerts moderators** with an embed in `MOD_LOG_CHANNEL_ID` (if set).
+
+Tracking is per `(server, member)` and in-memory — flooding happens in seconds, so it needs
+no persistence and works without Redis. The count of handled incidents is shown in `/stats`.
+
+**Never actioned:** bots, the server owner, anyone with Administrator / Manage Server /
+Moderate Members, members holding a `SPAM_TRUSTED_ROLE_IDS` role, and messages in
+`SPAM_IGNORED_CHANNEL_IDS`. Matching on identical text keeps false positives near zero.
+
+> The bot needs the **Moderate Members** and **Manage Messages** permissions, and its role
+> must sit **above** the members it should be able to time out. If a timeout fails, the
+> mod-log embed says so. Set `SPAM_DETECTION_ENABLED=false` to turn the feature off.
+
+### Slash Commands
 
 Registered automatically on startup (per-guild when `ALLOWED_GUILD_IDS` is set — instant —
 otherwise globally, which can take up to ~1h to appear).
@@ -87,6 +139,7 @@ npm start
 | `DISCORD_BOT_TOKEN` | ✅ | Your bot token. |
 | `ALLOWED_GUILD_IDS` | — | Comma-separated server (guild) IDs the bot acts in. Empty = all servers. |
 | `PORT` | — | Port for the health-check HTTP server (any path returns `ok`). Defaults to `3000`; Render sets this automatically. |
+| `FACEBOOK_EMBED_ENABLED` | — | Set to `false` to disable native Facebook embeds. Defaults to enabled. |
 | `UPSTASH_REDIS_REST_URL` | — | Upstash Redis REST URL. Enables persistence (see below). |
 | `UPSTASH_REDIS_REST_TOKEN` | — | Upstash Redis REST token (pairs with the URL above). |
 | `SPAM_DETECTION_ENABLED` | — | Set to `false` to disable spam detection. Defaults to enabled. |
@@ -132,37 +185,6 @@ UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
 2. On [UptimeRobot](https://uptimerobot.com): add an **HTTP(s)** monitor pointing at your
    Render URL (e.g. `https://your-app.onrender.com/`), interval 5 min. Any path returns `ok`.
 
-## How It Works
-
-1. The bot listens to messages in allowed servers (skipping servers disabled via `/toggle`).
-2. It checks whether the message contains a supported link.
-3. If so, it:
-   - **Suppresses** the original message's auto-embed (the broken preview), and
-   - **Replies** with the converted links — which Discord auto-embeds — without pinging the author.
-
-## Spam protection
-
-Hijacked accounts typically blast the **same message across many channels within seconds**.
-The bot watches for exactly that pattern: when one member posts the same text (normalized —
-case and whitespace insensitive) in `SPAM_CHANNEL_THRESHOLD`+ distinct channels within
-`SPAM_WINDOW_SECONDS`, it:
-
-1. **Times the member out** for `SPAM_TIMEOUT_MINUTES` (reversible — the account belongs to a
-   real, compromised member).
-2. **Deletes** the offending messages across the affected channels.
-3. **Alerts moderators** with an embed in `MOD_LOG_CHANNEL_ID` (if set).
-
-Tracking is per `(server, member)` and in-memory — flooding happens in seconds, so it needs
-no persistence and works without Redis. The count of handled incidents is shown in `/stats`.
-
-**Never actioned:** bots, the server owner, anyone with Administrator / Manage Server /
-Moderate Members, members holding a `SPAM_TRUSTED_ROLE_IDS` role, and messages in
-`SPAM_IGNORED_CHANNEL_IDS`. Matching on identical text keeps false positives near zero.
-
-> The bot needs the **Moderate Members** and **Manage Messages** permissions, and its role
-> must sit **above** the members it should be able to time out. If a timeout fails, the
-> mod-log embed says so. Set `SPAM_DETECTION_ENABLED=false` to turn the feature off.
-
 ## Project Structure
 
 ```
@@ -170,17 +192,19 @@ index.js                  Entry point — starts the bot, re-exports rules for t
 src/
   config.js               All environment-variable parsing (one object)
   rules.js                Pure link logic: RULES, TRIGGER, applyReplacements (no deps)
+  facebook.js             Facebook native embed: URL detection, OG-tag scraping, embed builder
   spam.js                 Pure cross-channel flood detection: createFloodTracker (no deps)
   moderation.js           Discord-side spam response: isExempt, handleFlood (timeout/delete/alert)
   storage.js              Persistence behind one interface (Upstash Redis ⇄ in-memory)
   bot.js                  Wires up the client, events, command registration, health server
   events/
-    messageCreate.js      Auto-conversion + spam-detection handler
+    messageCreate.js      Auto-conversion + Facebook embeds + spam-detection handler
     interactionCreate.js  Slash-command dispatcher
   commands/
     index.js              Command registry (the list every command is pulled from)
     ping.js  convert.js  sources.js  toggle.js  stats.js  help.js
   spam.test.js            Unit tests for the flood-detection logic
+  facebook.test.js        Unit tests for Facebook URL detection + OG-tag extraction (mocked fetch)
 index.test.js             Unit tests for the link logic
 ```
 
