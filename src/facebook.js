@@ -83,6 +83,28 @@ function extractBrowserNativeVideoUrl(html) {
   return m ? m[1].replace(/\\\//g, '/') : null;
 }
 
+function decodeJsonEscapedString(escaped) {
+  try {
+    return JSON.parse(`"${escaped}"`);
+  } catch {
+    return escaped;
+  }
+}
+
+// Some routes (e.g. /photo?fbid=...) render the Comet SPA shell with no server-side
+// og: tags at all — the crawler gets a blank <title>Facebook</title> page. The post's
+// caption and image are still present, though, as JSON embedded in a <script> blob
+// (React hydration data), so fall back to pulling them out of there directly.
+function extractEmbeddedPostData(html) {
+  const messageMatch = /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
+  const imageMatch = /"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(html);
+  if (!messageMatch && !imageMatch) return null;
+  return {
+    description: messageMatch ? decodeJsonEscapedString(messageMatch[1]) : '',
+    image: imageMatch ? decodeJsonEscapedString(imageMatch[1]) : null,
+  };
+}
+
 /**
  * Fetch a Facebook URL and extract embeddable post data (title, description, image).
  * Returns null if nothing usable came back (login wall, deleted post, network error).
@@ -108,12 +130,13 @@ async function extractFacebookPost(url) {
     if (response.ok) {
       const html = await response.text();
       const tags = parseOgTags(html);
-      const hasContent = tags['og:title'] || tags['og:description'] || tags['og:image'];
-      if (hasContent && !looksLikeLoginWall(tags)) {
+      const ogHasContent = tags['og:title'] || tags['og:description'] || tags['og:image'];
+      const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
+      if ((ogHasContent || fallback) && !looksLikeLoginWall(tags)) {
         data = {
           title: tags['og:title'] || '',
-          description: tags['og:description'] || '',
-          image: tags['og:image'] || null,
+          description: tags['og:description'] || (fallback && fallback.description) || '',
+          image: tags['og:image'] || (fallback && fallback.image) || null,
           // Reels/videos expose a direct (usually short-lived, signed) file URL here.
           // Posted as plain text it lets Discord's own unfurler render a playable
           // video, which a bot-built embed can't do (see buildEmbed below). Reels no
