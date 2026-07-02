@@ -128,6 +128,23 @@ test('extractFacebookPost falls back to browser_native_hd_url when no og:video t
   }
 });
 
+test('extractFacebookPost falls back to embedded JSON message/image when no og: tags are present at all (photo? routes)', async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"foo":{"message":{"text":"Caption with a \\u00e9 and a \\n newline"},"other":1}}</script>
+    <script>{"image":{"uri":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=456"}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('photo'));
+    assert.equal(data.description, 'Caption with a é and a \n newline');
+    assert.equal(data.image, 'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=456');
+    assert.equal(data.video, null);
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
   const restore = mockFetch(`
     <html><head>
