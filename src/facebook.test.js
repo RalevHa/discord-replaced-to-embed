@@ -1,6 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { extractFacebookUrls, normalizeUrl, extractFacebookPost, buildEmbed } = require('./facebook');
+const {
+  extractFacebookUrls,
+  normalizeUrl,
+  extractFacebookPost,
+  buildEmbed,
+  encodeProxyPath,
+  decodeProxyPath,
+} = require('./facebook');
 
 test('extractFacebookUrls finds bare and scheme-prefixed links', () => {
   assert.deepEqual(extractFacebookUrls('check facebook.com/user/posts/123'), [
@@ -46,6 +53,14 @@ test('normalizeUrl returns input unchanged if not a valid URL', () => {
   assert.equal(normalizeUrl('not a url'), 'not a url');
 });
 
+// extractFacebookPost caches by normalized URL, so each test needs its own unique
+// URL — Date.now() alone isn't enough since tests can share a millisecond.
+let uniqueCounter = 0;
+function uniquePostUrl(path = 'user/posts') {
+  uniqueCounter += 1;
+  return `https://www.facebook.com/${path}/${uniqueCounter}`;
+}
+
 // extractFacebookPost hits the network, so these tests stub global.fetch. facebook.js
 // calls `fetch` at invocation time (not captured at require time), so overriding it
 // here takes effect immediately.
@@ -67,10 +82,40 @@ test('extractFacebookPost parses og:title/description/image', async () => {
     </head></html>
   `);
   try {
-    const data = await extractFacebookPost(`https://www.facebook.com/user/posts/${Date.now()}`);
+    const data = await extractFacebookPost(uniquePostUrl());
     assert.equal(data.title, 'Cool Post');
     assert.equal(data.description, 'A description');
     assert.equal(data.image, 'https://scontent.example/img.jpg');
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost captures a Reel/video URL from og:video:secure_url', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="A Reel" />
+      <meta property="og:image" content="https://scontent.example/thumb.jpg" />
+      <meta property="og:video:secure_url" content="https://video.example/clip.mp4" />
+    </head></html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'));
+    assert.equal(data.video, 'https://video.example/clip.mp4');
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Cool Post" />
+    </head></html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.video, null);
   } finally {
     restore();
   }
@@ -84,7 +129,7 @@ test('extractFacebookPost returns null for a login-wall page', async () => {
     </head></html>
   `);
   try {
-    const data = await extractFacebookPost(`https://www.facebook.com/user/posts/${Date.now()}`);
+    const data = await extractFacebookPost(uniquePostUrl());
     assert.equal(data, null);
   } finally {
     restore();
@@ -94,7 +139,7 @@ test('extractFacebookPost returns null for a login-wall page', async () => {
 test('extractFacebookPost returns null on a non-ok response', async () => {
   const restore = mockFetch('', { ok: false });
   try {
-    const data = await extractFacebookPost(`https://www.facebook.com/user/posts/${Date.now()}`);
+    const data = await extractFacebookPost(uniquePostUrl());
     assert.equal(data, null);
   } finally {
     restore();
@@ -109,7 +154,7 @@ test('extractFacebookPost caches results per normalized URL', async () => {
     return { ok: true, text: async () => '<meta property="og:title" content="Cached Post" />' };
   };
   try {
-    const url = `https://www.facebook.com/user/posts/${Date.now()}-cache-test`;
+    const url = uniquePostUrl('cache-test');
     const first = await extractFacebookPost(url);
     const second = await extractFacebookPost(`${url}?fbclid=abc`); // normalizes to same key
     assert.equal(first.title, 'Cached Post');
@@ -118,6 +163,16 @@ test('extractFacebookPost caches results per normalized URL', async () => {
   } finally {
     global.fetch = original;
   }
+});
+
+test('encodeProxyPath/decodeProxyPath round-trip a Facebook URL', () => {
+  const url = 'https://www.facebook.com/reel/123456789?fbclid=abc';
+  assert.equal(decodeProxyPath(encodeProxyPath(url)), url);
+});
+
+test('encodeProxyPath produces a URL-safe path segment', () => {
+  const encoded = encodeProxyPath('https://www.facebook.com/reel/123?a=1&b=2');
+  assert.match(encoded, /^[A-Za-z0-9_-]+$/);
 });
 
 test('buildEmbed falls back to a generic description when none was extracted', () => {

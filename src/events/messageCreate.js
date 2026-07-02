@@ -48,11 +48,24 @@ module.exports = async function messageCreate(message, ctx) {
   const { replaced } = TRIGGER.test(content) ? applyReplacements(content) : { replaced: [] };
 
   const facebookEmbeds = [];
+  const facebookVideoLinks = [];
   // Cap per-message to avoid one message triggering a burst of outbound fetches.
   for (const url of facebookUrls.slice(0, 4)) {
     const data = await facebook.extractFacebookPost(url);
     if (data) {
-      facebookEmbeds.push(facebook.buildEmbed(data));
+      // Reels/videos: post a link Discord's own unfurler will play inline — a
+      // bot-built embed can't carry playable video. Prefer our own proxy (stable
+      // Twitter Player Card, works even if Facebook's CDN url is signed/expiring);
+      // fall back to the raw CDN url when no proxy is configured.
+      if (data.video) {
+        facebookVideoLinks.push(
+          config.facebookProxyBaseUrl
+            ? `${config.facebookProxyBaseUrl}/fb/${facebook.encodeProxyPath(url)}`
+            : data.video
+        );
+      } else {
+        facebookEmbeds.push(facebook.buildEmbed(data));
+      }
       replaced.push({ label: 'Facebook' });
     }
   }
@@ -65,7 +78,10 @@ module.exports = async function messageCreate(message, ctx) {
     // Keep the original, just strip its auto-embed, then reply with the converted
     // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
     await message.suppressEmbeds(true);
-    const textLinks = replaced.filter((r) => r.converted).map((r) => r.converted);
+    const textLinks = replaced
+      .filter((r) => r.converted)
+      .map((r) => r.converted)
+      .concat(facebookVideoLinks);
     await message.reply({
       ...(textLinks.length ? { content: textLinks.join('\n') } : {}),
       ...(facebookEmbeds.length ? { embeds: facebookEmbeds } : {}),
