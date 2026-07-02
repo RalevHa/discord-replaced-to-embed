@@ -22,6 +22,12 @@ module.exports = Object.freeze({
   // needed). Set to "false" to disable if Facebook starts blocking your IP.
   facebookEmbedEnabled: process.env.FACEBOOK_EMBED_ENABLED !== 'false',
 
+  // Public base URL this bot's own HTTP server is reachable at (e.g. a
+  // Cloudflare Tunnel hostname), used only for Facebook Reel/video links so
+  // Discord's unfurler renders a playable video via facebookProxy.js. Empty =
+  // fall back to posting the raw (often short-lived) Facebook CDN video URL.
+  facebookProxyBaseUrl: (process.env.FACEBOOK_PROXY_BASE_URL || '').trim().replace(/\/$/, ''),
+
   // --- Cross-channel spam (hijacked-account) detection ---
   // When one member posts the same text across spamChannelThreshold+ channels within
   // spamWindow seconds, the bot deletes those messages and times the member out.

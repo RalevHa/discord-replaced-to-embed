@@ -11,6 +11,9 @@ const { createFloodTracker } = require('./spam');
 const commands = require('./commands');
 const interactionCreate = require('./events/interactionCreate');
 const messageCreate = require('./events/messageCreate');
+const facebookProxy = require('./facebookProxy');
+
+const FB_PROXY_PATH = /^\/fb\/([^/?]+)/;
 
 // Register slash commands. Per-guild registration is instant; global can take
 // ~1h to propagate, so prefer the allowlist guilds when one is set.
@@ -25,10 +28,22 @@ async function registerCommands(client, allowedGuilds) {
   }
 }
 
-// Minimal HTTP server so Render binds a port and UptimeRobot can ping it awake.
+// HTTP server so Render/UptimeRobot has a port to ping, and (at /fb/<encoded>)
+// so Discord's own link-unfurler can fetch a playable-video card for Facebook
+// Reels — see facebookProxy.js for why a bot-sent embed can't do that itself.
 function startHealthServer(port) {
   http
-    .createServer((req, res) => res.end('ok'))
+    .createServer((req, res) => {
+      const match = FB_PROXY_PATH.exec(req.url || '');
+      if (match) {
+        facebookProxy.handleProxyRequest(res, match[1], req.headers['user-agent']).catch((err) => {
+          console.error('Facebook proxy error:', err);
+          if (!res.headersSent) res.writeHead(500).end('error');
+        });
+        return;
+      }
+      res.end('ok');
+    })
     .listen(port, () => console.log(`Health server on :${port}`));
 }
 

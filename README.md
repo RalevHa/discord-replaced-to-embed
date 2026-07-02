@@ -42,8 +42,10 @@ single rule per platform covers every link form.
 Facebook doesn't have a reliable public "fixup" host to redirect to, so it's handled
 differently from the platforms above: instead of rewriting the link, the bot fetches the post
 itself — spoofing Facebook's own link-preview crawler user-agent — extracts its Open Graph
-tags (title, description, image), and posts a native Discord embed built from that data. No
-self-hosted proxy, no credentials, no headless browser.
+tags, and either posts a native Discord embed (title, description, image) or, for Reels and
+videos, the direct video URL as plain text so Discord's own unfurler plays it inline (a
+bot-built embed can't carry playable video). No self-hosted proxy, no credentials, no
+headless browser.
 
 - Works out of the box; no configuration required.
 - If the post is behind a login wall (deleted post, private group, or Facebook rate-limiting
@@ -51,8 +53,26 @@ self-hosted proxy, no credentials, no headless browser.
 - Results are cached in-memory for 15 minutes so re-shares of the same post don't refetch.
 - Set `FACEBOOK_EMBED_ENABLED=false` to disable this feature entirely.
 
-This only extracts what's in the page's OG tags — title/description/image. It doesn't fetch
-engagement stats (likes/comments) or video files.
+This only extracts what's in the page's OG tags — title/description/image/video. It doesn't
+fetch engagement stats (likes/comments). Video links come straight from Facebook's CDN and
+are often signed/time-limited, so an old re-share may no longer play even though the original
+post still does — see [Facebook video proxy](#facebook-video-proxy-optional) below for a more
+durable option.
+
+#### Facebook video proxy (optional)
+
+If `FACEBOOK_PROXY_BASE_URL` is set, Reel/video links are posted as
+`{FACEBOOK_PROXY_BASE_URL}/fb/<encoded-url>` instead of the raw CDN URL. That route (served by
+the bot's own HTTP server, `src/facebookProxy.js`) detects link-preview crawlers (Discord,
+Slack, …) and serves a synthetic page with [Twitter Player
+Card](https://developer.x.com/en/docs/twitter-for-websites/cards/guides/getting-started) meta
+tags pointing at the video, which Discord's unfurler renders as a native playable video —
+real visitors following the link are redirected straight to the original Facebook post.
+
+This requires the bot's HTTP server (the same one used for the Render/UptimeRobot health
+check) to be reachable from the public internet at that URL — see
+[Run it yourself with Cloudflare Tunnel](#option-b-run-it-yourself-with-cloudflare-tunnel).
+Leave `FACEBOOK_PROXY_BASE_URL` unset to keep posting the raw CDN URL instead.
 
 ### Spam protection
 
@@ -138,6 +158,7 @@ npm start
 | `ALLOWED_GUILD_IDS` | — | Comma-separated server (guild) IDs the bot acts in. Empty = all servers. |
 | `PORT` | — | Port for the health-check HTTP server (any path returns `ok`). Defaults to `3000`; Render sets this automatically. |
 | `FACEBOOK_EMBED_ENABLED` | — | Set to `false` to disable native Facebook embeds. Defaults to enabled. |
+| `FACEBOOK_PROXY_BASE_URL` | — | Public URL the bot's HTTP server is reachable at, for playable Facebook video embeds. See [Facebook video proxy](#facebook-video-proxy-optional). Empty = post the raw CDN URL instead. |
 | `UPSTASH_REDIS_REST_URL` | — | Upstash Redis REST URL. Enables persistence (see below). |
 | `UPSTASH_REDIS_REST_TOKEN` | — | Upstash Redis REST token (pairs with the URL above). |
 | `SPAM_DETECTION_ENABLED` | — | Set to `false` to disable spam detection. Defaults to enabled. |
@@ -169,7 +190,9 @@ serverless tier, HTTP-based):
 2. Copy the **REST API** `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 3. Add both as env vars (locally in `.env`, or in the Render dashboard).
 
-## Deployment (Render free tier + UptimeRobot)
+## Deployment
+
+### Option A: Render free tier + UptimeRobot
 
 The bot runs a tiny HTTP server so Render's free **Web Service** has a port to bind, and so
 UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
@@ -183,6 +206,54 @@ UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
 2. On [UptimeRobot](https://uptimerobot.com): add an **HTTP(s)** monitor pointing at your
    Render URL (e.g. `https://your-app.onrender.com/`), interval 5 min. Any path returns `ok`.
 
+Render's free tier caps out at 750 instance-hours/month, 100 GB bandwidth, and an ephemeral
+filesystem (hence Upstash for persistence) — fine for a small bot, but worth knowing about.
+
+### Option B: Run it yourself with Cloudflare Tunnel
+
+Running on your own machine (a always-on PC, home server, etc.) avoids Render's limits
+entirely, and — if you already manage a domain on Cloudflare — [Cloudflare
+Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+(`cloudflared`) gives it a public HTTPS URL with no router/port-forwarding changes. This is
+also what makes [`FACEBOOK_PROXY_BASE_URL`](#facebook-video-proxy-optional) usable, since that
+needs the bot's HTTP server to be reachable from the internet.
+
+1. Install `cloudflared` ([download](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
+2. Authenticate it against the Cloudflare account that manages your domain:
+   ```bash
+   cloudflared tunnel login
+   ```
+3. Create a tunnel and route a hostname to it (pick any subdomain, e.g. `fb.yourdomain.com`):
+   ```bash
+   cloudflared tunnel create discord-bot
+   cloudflared tunnel route dns discord-bot fb.yourdomain.com
+   ```
+4. Point the tunnel at the port the bot listens on (`PORT` in `.env`, default `3000`) — create
+   `~/.cloudflared/config.yml`:
+   ```yaml
+   tunnel: discord-bot
+   credentials-file: /path/to/<tunnel-id>.json   # printed by `tunnel create`
+   ingress:
+     - hostname: fb.yourdomain.com
+       service: http://localhost:3000
+     - service: http_status:404
+   ```
+5. Run the tunnel (in its own terminal/process, alongside the bot):
+   ```bash
+   cloudflared tunnel run discord-bot
+   ```
+6. Add `FACEBOOK_PROXY_BASE_URL=https://fb.yourdomain.com` to `.env`, then start the bot as
+   usual (`npm start`).
+
+A few things Render handled for you that you're now responsible for:
+- **Uptime**: no free UptimeRobot-style wake-up needed (nothing sleeps), but if the machine
+  reboots or the process crashes, nothing restarts it automatically — run it under a process
+  manager (e.g. `pm2 start index.js` or a systemd/Windows service) if you want that.
+- **Staying online**: on a laptop, disable sleep-on-lid-close / automatic sleep while plugged
+  in, or the bot (and tunnel) will go offline whenever the lid shuts.
+- **Persistence**: the filesystem is no longer ephemeral, but `UPSTASH_REDIS_REST_URL`/`TOKEN`
+  are still worth keeping if you might reinstall/move machines later.
+
 ## Project Structure
 
 ```
@@ -191,6 +262,7 @@ src/
   config.js               All environment-variable parsing (one object)
   rules.js                Pure link logic: RULES, TRIGGER, applyReplacements (no deps)
   facebook.js             Facebook native embed: URL detection, OG-tag scraping, embed builder
+  facebookProxy.js        HTTP proxy for playable Facebook video embeds (Twitter Player Card)
   spam.js                 Pure cross-channel flood detection: createFloodTracker (no deps)
   moderation.js           Discord-side spam response: isExempt, handleFlood (timeout/delete/alert)
   storage.js              Persistence behind one interface (Upstash Redis ⇄ in-memory)
@@ -203,6 +275,7 @@ src/
     ping.js  convert.js  sources.js  toggle.js  stats.js  help.js
   spam.test.js            Unit tests for the flood-detection logic
   facebook.test.js        Unit tests for Facebook URL detection + OG-tag extraction (mocked fetch)
+  facebookProxy.test.js   Unit tests for the video-proxy crawler detection and HTML/routing
 index.test.js             Unit tests for the link logic
 ```
 

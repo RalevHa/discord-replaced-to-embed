@@ -103,6 +103,10 @@ async function extractFacebookPost(url) {
           title: tags['og:title'] || '',
           description: tags['og:description'] || '',
           image: tags['og:image'] || null,
+          // Reels/videos expose a direct (usually short-lived, signed) file URL here.
+          // Posted as plain text it lets Discord's own unfurler render a playable
+          // video, which a bot-built embed can't do (see buildEmbed below).
+          video: tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'] || null,
           siteName: tags['og:site_name'] || 'Facebook',
           url: tags['og:url'] || key,
         };
@@ -130,4 +134,20 @@ function buildEmbed(data) {
   return embed;
 }
 
-module.exports = { extractFacebookUrls, extractFacebookPost, buildEmbed, normalizeUrl };
+/** Opaque path segment for the video-proxy route (see facebookProxy.js). */
+function encodeProxyPath(facebookUrl) {
+  return Buffer.from(facebookUrl, 'utf8').toString('base64url');
+}
+
+function decodeProxyPath(segment) {
+  return Buffer.from(segment, 'base64url').toString('utf8');
+}
+
+module.exports = {
+  extractFacebookUrls,
+  extractFacebookPost,
+  buildEmbed,
+  normalizeUrl,
+  encodeProxyPath,
+  decodeProxyPath,
+};
