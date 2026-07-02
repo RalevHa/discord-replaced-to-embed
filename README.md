@@ -3,7 +3,7 @@
 Automatically detects supported social-media links in messages, suppresses their broken
 auto-embed, and replies with embeddable alternatives so they preview properly in Discord.
 
-- 🔗 **Auto-converts** links from 7 platforms (see [Supported Platforms](#supported-platforms))
+- 🔗 **Auto-converts** links from 5 platforms (see [Supported Platforms](#supported-platforms))
 - 📘 **Native Facebook embeds** — scrapes Open Graph data, no self-hosted proxy required
 - 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
@@ -32,8 +32,6 @@ single rule per platform covers every link form.
 | Bilibili | `https://(sub.)bilibili.com/PATH` | `https://www.vxbilibili.com/PATH` |
 | X (Twitter) | `https://(sub.)x.com/PATH` | `https://fixupx.com/PATH` |
 | Pixiv | `https://(sub.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
-| Reddit | `https://(sub.)reddit.com/PATH` | `https://rxddit.com/PATH` |
-| Threads | `https://(sub.)threads.net/PATH` | `https://vxthreads.net/PATH` |
 | Bluesky | `https://(sub.)bsky.app/PATH` | `https://bskx.app/PATH` |
 
 > These embed services are community-run and occasionally rename or go down. If a platform

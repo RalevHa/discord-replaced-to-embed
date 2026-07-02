@@ -24,10 +24,6 @@ const cases = [
                 'https://fixupx.com/user/status/123', ['X (Twitter)']],
   ['pixiv',     'https://www.pixiv.net/en/artworks/123',
                 'https://www.phixiv.net/en/artworks/123', ['Pixiv']],
-  ['reddit subdomain', 'https://old.reddit.com/r/foo/comments/abc/title/',
-                'https://rxddit.com/r/foo/comments/abc/title/', ['Reddit']],
-  ['threads',   'https://www.threads.net/@user/post/abc',
-                'https://vxthreads.net/@user/post/abc', ['Threads']],
   ['bluesky',   'https://bsky.app/profile/user/post/abc',
                 'https://bskx.app/profile/user/post/abc', ['Bluesky']],
 
@@ -56,6 +52,34 @@ for (const [name, input, expectedOut, expectedLabels] of cases) {
     );
   });
 }
+
+test('spoilered link stays spoilered in the converted output', () => {
+  const { replaced } = applyReplacements('||https://x.com/user/status/123||');
+  assert.equal(replaced.length, 1);
+  assert.equal(replaced[0].converted, '||https://fixupx.com/user/status/123||');
+});
+
+test('spoilered link with trailing words before the closing bars', () => {
+  const { replaced } = applyReplacements(
+    '||https://bsky.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k test ปิด||'
+  );
+  assert.equal(replaced.length, 1);
+  assert.equal(
+    replaced[0].converted,
+    '||https://bskx.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||'
+  );
+});
+
+test('spoiler closes right after the link, trailing text stays outside it', () => {
+  const { replaced } = applyReplacements(
+    '||https://bsky.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||test ปิด'
+  );
+  assert.equal(replaced.length, 1);
+  assert.equal(
+    replaced[0].converted,
+    '||https://bskx.app/profile/rustyjuggs.bsky.social/post/3mpespi3u5s2k||'
+  );
+});
 
 test('TRIGGER early-exit matches supported domains and skips others', () => {
   assert.ok(TRIGGER.test('hey vt.tiktok.com/x'), 'should detect tiktok');
