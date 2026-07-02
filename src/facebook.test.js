@@ -107,6 +107,27 @@ test('extractFacebookPost captures a Reel/video URL from og:video:secure_url', a
   }
 });
 
+test('extractFacebookPost falls back to browser_native_hd_url when no og:video tag is present (Reels)', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:type" content="video.other" />
+      <meta property="og:title" content="A Reel" />
+      <meta property="og:image" content="https://scontent.example/thumb.jpg" />
+    </head>
+    <script>{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123","browser_native_sd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123&sd=1"}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'));
+    assert.equal(
+      data.video,
+      'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=123'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
   const restore = mockFetch(`
     <html><head>
