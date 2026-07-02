@@ -3,6 +3,7 @@
 
 const { applyReplacements, TRIGGER } = require('../rules');
 const { isExempt, handleFlood } = require('../moderation');
+const facebook = require('../facebook');
 
 module.exports = async function messageCreate(message, ctx) {
   const { config, storage, spam } = ctx;
@@ -37,20 +38,37 @@ module.exports = async function messageCreate(message, ctx) {
 
   const content = message.content;
 
-  // Quick early-exit: only process if a known domain is in the message.
-  if (!TRIGGER.test(content)) return;
+  // Facebook links get a native embed (scraped OG data) instead of a text rewrite —
+  // checked independently of TRIGGER since Facebook isn't in RULES.
+  const facebookUrls = config.facebookEmbedEnabled ? facebook.extractFacebookUrls(content) : [];
 
-  const { replaced } = applyReplacements(content);
+  // Quick early-exit: bail unless there's a known domain OR a Facebook link.
+  if (!TRIGGER.test(content) && facebookUrls.length === 0) return;
+
+  const { replaced } = TRIGGER.test(content) ? applyReplacements(content) : { replaced: [] };
+
+  const facebookEmbeds = [];
+  // Cap per-message to avoid one message triggering a burst of outbound fetches.
+  for (const url of facebookUrls.slice(0, 4)) {
+    const data = await facebook.extractFacebookPost(url);
+    if (data) {
+      facebookEmbeds.push(facebook.buildEmbed(data));
+      replaced.push({ label: 'Facebook' });
+    }
+  }
+
   if (replaced.length === 0) return;
 
   storage.recordStats(replaced);
 
   try {
     // Keep the original, just strip its auto-embed, then reply with the converted
-    // links (which Discord auto-embeds). No ping on the reply.
+    // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
     await message.suppressEmbeds(true);
+    const textLinks = replaced.filter((r) => r.converted).map((r) => r.converted);
     await message.reply({
-      content: replaced.map((r) => r.converted).join('\n'),
+      ...(textLinks.length ? { content: textLinks.join('\n') } : {}),
+      ...(facebookEmbeds.length ? { embeds: facebookEmbeds } : {}),
       allowedMentions: { repliedUser: false },
     });
   } catch (err) {

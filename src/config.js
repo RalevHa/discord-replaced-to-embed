@@ -18,6 +18,10 @@ module.exports = Object.freeze({
   // Port for the health-check HTTP server (Render sets this automatically).
   port: process.env.PORT || 3000,
 
+  // Native Facebook post embeds (scraped Open Graph data, no self-hosted proxy
+  // needed). Set to "false" to disable if Facebook starts blocking your IP.
+  facebookEmbedEnabled: process.env.FACEBOOK_EMBED_ENABLED !== 'false',
+
   // --- Cross-channel spam (hijacked-account) detection ---
   // When one member posts the same text across spamChannelThreshold+ channels within
   // spamWindow seconds, the bot deletes those messages and times the member out.
