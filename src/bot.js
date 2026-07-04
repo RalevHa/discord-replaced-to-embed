@@ -2,6 +2,8 @@
 // registration, and the health-check HTTP server.
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const config = require('./config');
@@ -14,6 +16,12 @@ const messageCreate = require('./events/messageCreate');
 const facebookProxy = require('./facebookProxy');
 
 const FB_PROXY_PATH = /^\/fb\/([^/?]+)/;
+
+// Bilingual (EN/TH) static pages, read once at startup.
+const STATIC_PAGES = {
+  '/tos': fs.readFileSync(path.join(__dirname, '..', 'public', 'tos.html')),
+  '/privacy': fs.readFileSync(path.join(__dirname, '..', 'public', 'privacy.html')),
+};
 
 // Register slash commands. Per-guild registration is instant; global can take
 // ~1h to propagate, so prefer the allowlist guilds when one is set.
@@ -42,6 +50,13 @@ function startHealthServer(port) {
         });
         return;
       }
+
+      const page = STATIC_PAGES[(req.url || '').split('?')[0]];
+      if (page) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(page);
+        return;
+      }
+
       res.end('ok');
     })
     .listen(port, () => console.log(`Health server on :${port}`));

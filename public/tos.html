@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Service — Link Replacer Bot</title>
+<style>
+:root{
+  --bg:#EEEDE7; --bg-soft:#E3E1D8; --fg:#1B1E27; --fg-dim:rgba(27,30,39,.68);
+  --line:rgba(27,30,39,.16); --accent:#8F5900; --accent-contrast:#F7F5EF;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12141B; --bg-soft:#1B1F29; --fg:#ECEAE2; --fg-dim:rgba(236,234,226,.68);
+    --line:rgba(236,234,226,.16); --accent:#F2A93B; --accent-contrast:#12141B;
+  }
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Thai","Helvetica Neue",Arial,sans-serif;
+  line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;}
+.lang-radio{position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;}
+a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px;}
+a:hover{text-decoration-thickness:2px;}
+:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px;}
+
+.page{max-width:42rem; margin:0 auto; padding:1.75rem 1.5rem 4rem;}
+
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  padding-bottom:1.25rem; margin-bottom:2.25rem; border-bottom:1px solid var(--line);
+}
+.crumb{font-size:.8rem; color:var(--fg-dim);}
+.crumb-sep{opacity:.5; margin:0 .3em;}
+
+.lang-switch{display:inline-flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:999px;
+  font-size:.72rem; letter-spacing:.04em;}
+.lang-tab{padding:.3rem .75rem; border-radius:999px; cursor:pointer; color:var(--fg-dim); user-select:none;}
+.lang-tab:hover{color:var(--fg);}
+
+.doc{display:none;}
+.hero{margin-bottom:1rem;}
+.eyebrow{font-size:.8rem; letter-spacing:.06em; color:var(--accent); margin:0 0 .6rem;}
+h1{font-size:clamp(1.9rem,1.5rem + 1.6vw,2.6rem); font-weight:800; letter-spacing:-0.02em; margin:0 0 .6rem; line-height:1.15;}
+.dek{font-size:1.05rem; color:var(--fg-dim); max-width:36rem; margin:0 0 1.75rem;}
+
+.meta-card{
+  display:grid; grid-template-columns:max-content 1fr; row-gap:.5rem; column-gap:1.25rem;
+  background:var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:1rem 1.25rem;
+  font-size:.82rem; margin:0 0 2.5rem;
+}
+.meta-card dt{color:var(--accent); font-weight:600; margin:0;}
+.meta-card dd{margin:0; color:var(--fg-dim);}
+@media (max-width:480px){ .meta-card{grid-template-columns:1fr;} .meta-card dt{margin-top:.3rem;} }
+
+.clause{margin:0 0 2.5rem;}
+.tag{font-size:.75rem; color:var(--accent); letter-spacing:.05em; margin:0 0 .4rem;}
+.clause h2{font-size:1.2rem; font-weight:700; margin:0 0 .65rem;}
+.clause p, .clause ul{margin:0 0 .9rem; max-width:38rem;}
+.clause ul{padding-left:1.2rem;}
+.clause li{margin-bottom:.5rem;}
+code{background:var(--bg-soft); padding:.1em .4em; border-radius:4px; font-size:.9em;}
+
+.footer{display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; margin-top:3rem;
+  padding-top:1.5rem; border-top:1px solid var(--line); font-size:.8rem; color:var(--fg-dim);}
+.footer .dollar{color:var(--accent);}
+.footer a{color:var(--fg-dim);}
+.footer a:hover{color:var(--accent);}
+.footer .sep{opacity:.5;}
+
+#lang-en:checked ~ .page .doc.lang-en,
+#lang-th:checked ~ .page .doc.lang-th{display:block;}
+#lang-en:checked ~ .page .lang-switch label[for="lang-en"],
+#lang-th:checked ~ .page .lang-switch label[for="lang-th"]{
+  background:var(--accent); color:var(--accent-contrast);
+}
+#lang-en:focus-visible ~ .page .lang-switch label[for="lang-en"],
+#lang-th:focus-visible ~ .page .lang-switch label[for="lang-th"]{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+@media (prefers-reduced-motion: no-preference){
+  .lang-tab, a{transition:background-color .15s ease, color .15s ease, text-decoration-thickness .1s ease;}
+}
+</style>
+</head>
+<body>
+
+<input type="radio" name="lang" id="lang-en" class="lang-radio" checked>
+<input type="radio" name="lang" id="lang-th" class="lang-radio">
+
+<div class="page">
+  <header class="topbar">
+    <span class="crumb mono">link-replacer-bot<span class="crumb-sep">/</span>legal<span class="crumb-sep">/</span>tos</span>
+    <div class="lang-switch mono">
+      <label for="lang-en" class="lang-tab">EN</label>
+      <label for="lang-th" class="lang-tab">TH</label>
+    </div>
+  </header>
+
+  <main>
+    <article class="doc lang-en" lang="en">
+      <section class="hero">
+        <p class="eyebrow mono">/tos</p>
+        <h1>Terms of Service</h1>
+        <p class="dek">The house rules for a bot that quietly fixes broken link previews.</p>
+        <dl class="meta-card mono">
+          <div><dt>Last-Modified</dt><dd>2026-07-04</dd></div>
+          <div><dt>Content-Language</dt><dd>en, th</dd></div>
+          <div><dt>Applies-To</dt><dd>Any server with the bot added</dd></div>
+        </dl>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/01</p>
+        <h2>What the Bot does</h2>
+        <p>The Bot watches messages in servers it's added to for links from supported platforms
+        (TikTok, X, Bilibili, Pixiv, Bluesky, Facebook), suppresses their broken auto-embed, and
+        replies with an embeddable alternative. It also offers slash commands (<code>/convert</code>,
+        <code>/sources</code>, <code>/stats</code>, <code>/ping</code>, <code>/toggle</code>,
+        <code>/help</code>) and optional protection against hijacked accounts flooding a server
+        with the same message across channels.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/02</p>
+        <h2>Acceptable use</h2>
+        <p>Don't use the Bot to violate Discord's <a href="https://discord.com/terms">Terms of
+        Service</a> or <a href="https://discord.com/guidelines">Community Guidelines</a>, to
+        abuse, spam, or attack other users or servers, or to attempt to disrupt,
+        reverse-engineer, or overload the Bot's infrastructure.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/03</p>
+        <h2>No warranty</h2>
+        <p>The Bot is provided "as is," free of charge, with no guarantee of uptime, accuracy, or
+        availability. Link-conversion services and Facebook's own pages are operated by third
+        parties outside our control and can change or go offline at any time. Automated
+        moderation actions (timeouts, message deletion) are heuristic and can occasionally
+        misfire — a server's moderators are always able to review and reverse them.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/04</p>
+        <h2>Limitation of liability</h2>
+        <p>To the fullest extent permitted by law, the Bot's operator is not liable for any
+        damages — direct or indirect — arising from your use of, or inability to use, the Bot,
+        including moderation actions taken automatically.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/05</p>
+        <h2>Server admin responsibilities</h2>
+        <p>Anyone with server-management permissions can invite or remove the Bot, and use
+        <code>/toggle</code> to enable or disable automatic link conversion in that server.
+        Removing the Bot from a server stops all processing there.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/06</p>
+        <h2>Changes</h2>
+        <p>These Terms may be updated as the Bot's features change. Continued use after an
+        update means you accept the revised Terms.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/07</p>
+        <h2>Contact</h2>
+        <p>Questions or concerns: open an issue on the project's GitHub repository.</p>
+      </section>
+    </article>
+
+    <article class="doc lang-th" lang="th">
+      <section class="hero">
+        <p class="eyebrow mono">/tos</p>
+        <h1>ข้อกำหนดในการให้บริการ</h1>
+        <p class="dek">กติกาการใช้งานบอทที่คอยแก้ไขลิงก์พรีวิวที่พังให้แสดงผลได้ตามปกติ</p>
+        <dl class="meta-card mono">
+          <div><dt>Last-Modified</dt><dd>2026-07-04</dd></div>
+          <div><dt>Content-Language</dt><dd>en, th</dd></div>
+          <div><dt>Applies-To</dt><dd>ทุกเซิร์ฟเวอร์ที่เพิ่มบอทนี้</dd></div>
+        </dl>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/01</p>
+        <h2>บอทนี้ทำอะไรบ้าง</h2>
+        <p>บอทจะตรวจสอบข้อความในเซิร์ฟเวอร์ที่ถูกเพิ่มเข้าไป เพื่อค้นหาลิงก์จากแพลตฟอร์มที่รองรับ
+        (TikTok, X, Bilibili, Pixiv, Bluesky, Facebook) ปิดการแสดงตัวอย่าง (embed) ที่แสดงผลผิดพลาด
+        และตอบกลับด้วยลิงก์ทางเลือกที่แสดงตัวอย่างได้ นอกจากนี้ยังมีคำสั่ง slash command
+        (<code>/convert</code>, <code>/sources</code>, <code>/stats</code>, <code>/ping</code>,
+        <code>/toggle</code>, <code>/help</code>) และระบบป้องกันบัญชีที่ถูกแฮ็กซึ่งส่งข้อความเดิม
+        ซ้ำ ๆ ไปหลายช่องทาง (ถ้าเปิดใช้งาน)</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/02</p>
+        <h2>การใช้งานที่ยอมรับได้</h2>
+        <p>ห้ามใช้บอทเพื่อละเมิด <a href="https://discord.com/terms">ข้อกำหนดในการให้บริการของ
+        Discord</a> หรือ <a href="https://discord.com/guidelines">แนวทางปฏิบัติของชุมชน</a>
+        ห้ามใช้เพื่อล่วงละเมิด สแปม หรือโจมตีผู้ใช้/เซิร์ฟเวอร์อื่น และห้ามพยายามรบกวน
+        วิศวกรรมย้อนกลับ หรือโอเวอร์โหลดโครงสร้างพื้นฐานของบอท</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/03</p>
+        <h2>ไม่มีการรับประกัน</h2>
+        <p>บอทให้บริการ "ตามสภาพที่เป็นอยู่" โดยไม่มีค่าใช้จ่าย และไม่มีการรับประกันเรื่อง
+        ความพร้อมใช้งาน ความถูกต้อง หรือระยะเวลาทำงาน บริการแปลงลิงก์และหน้าเว็บของ Facebook เอง
+        ดำเนินการโดยบุคคลที่สามซึ่งอยู่นอกเหนือการควบคุมของเรา และอาจเปลี่ยนแปลงหรือหยุดให้บริการ
+        ได้ตลอดเวลา การดำเนินการ moderation อัตโนมัติ (การ timeout หรือการลบข้อความ)
+        เป็นการทำงานตามเงื่อนไขที่ตั้งไว้ และอาจผิดพลาดได้เป็นครั้งคราว
+        ผู้ดูแลเซิร์ฟเวอร์สามารถตรวจสอบและย้อนกลับการดำเนินการนั้นได้เสมอ</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/04</p>
+        <h2>ข้อจำกัดความรับผิด</h2>
+        <p>ผู้ดูแลบอทจะไม่รับผิดชอบต่อความเสียหายใด ๆ ไม่ว่าทางตรงหรือทางอ้อม ที่เกิดจากการใช้งาน
+        หรือการไม่สามารถใช้งานบอทได้ รวมถึงการดำเนินการ moderation ที่เกิดขึ้นโดยอัตโนมัติ
+        เท่าที่กฎหมายอนุญาต</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/05</p>
+        <h2>ความรับผิดชอบของผู้ดูแลเซิร์ฟเวอร์</h2>
+        <p>ผู้ที่มีสิทธิ์จัดการเซิร์ฟเวอร์สามารถเชิญหรือนำบอทออกได้ และใช้คำสั่ง
+        <code>/toggle</code> เพื่อเปิด/ปิดการแปลงลิงก์อัตโนมัติในเซิร์ฟเวอร์นั้น
+        การนำบอทออกจากเซิร์ฟเวอร์จะหยุดการประมวลผลทั้งหมดในเซิร์ฟเวอร์นั้นทันที</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/06</p>
+        <h2>การเปลี่ยนแปลง</h2>
+        <p>ข้อกำหนดนี้อาจได้รับการปรับปรุงตามการเปลี่ยนแปลงของฟีเจอร์บอท
+        การใช้งานต่อหลังจากมีการอัปเดตถือว่าคุณยอมรับข้อกำหนดฉบับใหม่</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/07</p>
+        <h2>ติดต่อเรา</h2>
+        <p>หากมีคำถามหรือข้อกังวล สามารถเปิด issue ได้ที่ GitHub repository ของโปรเจกต์</p>
+      </section>
+    </article>
+  </main>
+
+  <footer class="footer">
+    <span class="dollar mono">$</span><span class="mono">cd ../privacy</span>
+    <a href="/privacy">Privacy Policy</a>
+    <span class="sep">·</span>
+    <a href="/">Home</a>
+  </footer>
+</div>
+</body>
+</html>

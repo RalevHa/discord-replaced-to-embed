@@ -195,7 +195,9 @@ serverless tier, HTTP-based):
 ### Option A: Render free tier + UptimeRobot
 
 The bot runs a tiny HTTP server so Render's free **Web Service** has a port to bind, and so
-UptimeRobot can keep it awake (free instances sleep after ~15 min idle).
+UptimeRobot can keep it awake (free instances sleep after ~15 min idle). It also serves
+bilingual (English/Thai) `/tos` and `/privacy` pages — handy for Discord's application
+Terms of Service / Privacy Policy URL fields.
 
 1. On [Render](https://render.com): **New → Web Service**, connect this repo.
    - **Build command:** `npm install`
