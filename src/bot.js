@@ -16,6 +16,7 @@ const messageCreate = require('./events/messageCreate');
 const messageUpdate = require('./events/messageUpdate');
 const messageDelete = require('./events/messageDelete');
 const facebookProxy = require('./facebookProxy');
+const deployWebhook = require('./deployWebhook');
 
 const FB_PROXY_PATH = /^\/fb\/([^/?]+)/;
 
@@ -50,6 +51,11 @@ function startHealthServer(port) {
           console.error('Facebook proxy error:', err);
           if (!res.headersSent) res.writeHead(500).end('error');
         });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/deploy-webhook') {
+        deployWebhook.handleDeployWebhook(req, res, config);
         return;
       }
 
