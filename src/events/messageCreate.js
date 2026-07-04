@@ -1,17 +1,14 @@
 // Auto-conversion: watch messages, rewrite supported links, and reply with the
 // embeddable versions (suppressing the original's broken auto-embed).
 
-const { applyReplacements, TRIGGER } = require('../rules');
 const { isExempt, handleFlood } = require('../moderation');
-const facebook = require('../facebook');
+const { buildConversion, buildReplyPayload, isHandleableMessage } = require('../linkConversion');
+const replyTracker = require('../replyTracker');
 
 module.exports = async function messageCreate(message, ctx) {
   const { config, storage, spam } = ctx;
 
-  // Ignore bots and DMs.
-  if (message.author.bot) return;
-  if (!message.guild) return;
-  if (config.allowedGuilds.length && !config.allowedGuilds.includes(message.guild.id)) return;
+  if (!isHandleableMessage(message, config)) return;
 
   // Cross-channel spam check runs on EVERY message (independent of link content), so
   // it sits before the link-conversion early-exits below.
@@ -36,40 +33,7 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip servers where an admin disabled auto-conversion via /toggle.
   if (storage.isGuildDisabled(message.guild.id)) return;
 
-  const content = message.content;
-
-  // Facebook links get a native embed (scraped OG data) instead of a text rewrite —
-  // checked independently of TRIGGER since Facebook isn't in RULES.
-  const facebookUrls = config.facebookEmbedEnabled ? facebook.extractFacebookUrls(content) : [];
-
-  // Quick early-exit: bail unless there's a known domain OR a Facebook link.
-  if (!TRIGGER.test(content) && facebookUrls.length === 0) return;
-
-  const { replaced } = TRIGGER.test(content) ? applyReplacements(content) : { replaced: [] };
-
-  const facebookEmbeds = [];
-  const facebookVideoLinks = [];
-  // Cap per-message to avoid one message triggering a burst of outbound fetches.
-  for (const url of facebookUrls.slice(0, 4)) {
-    const data = await facebook.extractFacebookPost(url);
-    if (data) {
-      // Reels/videos: post a link Discord's own unfurler will play inline — a
-      // bot-built embed can't carry playable video. Prefer our own proxy (stable
-      // Twitter Player Card, works even if Facebook's CDN url is signed/expiring);
-      // fall back to the raw CDN url when no proxy is configured.
-      if (data.video) {
-        facebookVideoLinks.push(
-          config.facebookProxyBaseUrl
-            ? `${config.facebookProxyBaseUrl}/fb/${facebook.encodeProxyPath(url)}`
-            : data.video
-        );
-      } else {
-        facebookEmbeds.push(facebook.buildEmbed(data));
-      }
-      replaced.push({ label: 'Facebook' });
-    }
-  }
-
+  const { replaced, textLinks, facebookEmbeds } = await buildConversion(message.content, config);
   if (replaced.length === 0) return;
 
   storage.recordStats(replaced);
@@ -78,15 +42,8 @@ module.exports = async function messageCreate(message, ctx) {
     // Keep the original, just strip its auto-embed, then reply with the converted
     // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
     await message.suppressEmbeds(true);
-    const textLinks = replaced
-      .filter((r) => r.converted)
-      .map((r) => r.converted)
-      .concat(facebookVideoLinks);
-    await message.reply({
-      ...(textLinks.length ? { content: textLinks.join('\n') } : {}),
-      ...(facebookEmbeds.length ? { embeds: facebookEmbeds } : {}),
-      allowedMentions: { repliedUser: false },
-    });
+    const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
+    replyTracker.set(message.id, reply.id);
   } catch (err) {
     console.error('Error processing message:', err);
   }
