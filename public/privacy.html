@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Link Replacer Bot</title>
+<style>
+:root{
+  --bg:#EEEDE7; --bg-soft:#E3E1D8; --fg:#1B1E27; --fg-dim:rgba(27,30,39,.68);
+  --line:rgba(27,30,39,.16); --accent:#8F5900; --accent-contrast:#F7F5EF;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12141B; --bg-soft:#1B1F29; --fg:#ECEAE2; --fg-dim:rgba(236,234,226,.68);
+    --line:rgba(236,234,226,.16); --accent:#F2A93B; --accent-contrast:#12141B;
+  }
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Thai","Helvetica Neue",Arial,sans-serif;
+  line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;}
+.lang-radio{position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;}
+a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px;}
+a:hover{text-decoration-thickness:2px;}
+:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px;}
+
+.page{max-width:42rem; margin:0 auto; padding:1.75rem 1.5rem 4rem;}
+
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  padding-bottom:1.25rem; margin-bottom:2.25rem; border-bottom:1px solid var(--line);
+}
+.crumb{font-size:.8rem; color:var(--fg-dim);}
+.crumb-sep{opacity:.5; margin:0 .3em;}
+
+.lang-switch{display:inline-flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:999px;
+  font-size:.72rem; letter-spacing:.04em;}
+.lang-tab{padding:.3rem .75rem; border-radius:999px; cursor:pointer; color:var(--fg-dim); user-select:none;}
+.lang-tab:hover{color:var(--fg);}
+
+.doc{display:none;}
+.hero{margin-bottom:1rem;}
+.eyebrow{font-size:.8rem; letter-spacing:.06em; color:var(--accent); margin:0 0 .6rem;}
+h1{font-size:clamp(1.9rem,1.5rem + 1.6vw,2.6rem); font-weight:800; letter-spacing:-0.02em; margin:0 0 .6rem; line-height:1.15;}
+.dek{font-size:1.05rem; color:var(--fg-dim); max-width:36rem; margin:0 0 1.75rem;}
+
+.meta-card{
+  display:grid; grid-template-columns:max-content 1fr; row-gap:.5rem; column-gap:1.25rem;
+  background:var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:1rem 1.25rem;
+  font-size:.82rem; margin:0 0 2.5rem;
+}
+.meta-card dt{color:var(--accent); font-weight:600; margin:0;}
+.meta-card dd{margin:0; color:var(--fg-dim);}
+@media (max-width:480px){ .meta-card{grid-template-columns:1fr;} .meta-card dt{margin-top:.3rem;} }
+
+.clause{margin:0 0 2.5rem;}
+.tag{font-size:.75rem; color:var(--accent); letter-spacing:.05em; margin:0 0 .4rem;}
+.clause h2{font-size:1.2rem; font-weight:700; margin:0 0 .65rem;}
+.clause p, .clause ul{margin:0 0 .9rem; max-width:38rem;}
+.clause ul{padding-left:1.2rem;}
+.clause li{margin-bottom:.5rem;}
+code{background:var(--bg-soft); padding:.1em .4em; border-radius:4px; font-size:.9em;}
+
+.footer{display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; margin-top:3rem;
+  padding-top:1.5rem; border-top:1px solid var(--line); font-size:.8rem; color:var(--fg-dim);}
+.footer .dollar{color:var(--accent);}
+.footer a{color:var(--fg-dim);}
+.footer a:hover{color:var(--accent);}
+.footer .sep{opacity:.5;}
+
+#lang-en:checked ~ .page .doc.lang-en,
+#lang-th:checked ~ .page .doc.lang-th{display:block;}
+#lang-en:checked ~ .page .lang-switch label[for="lang-en"],
+#lang-th:checked ~ .page .lang-switch label[for="lang-th"]{
+  background:var(--accent); color:var(--accent-contrast);
+}
+#lang-en:focus-visible ~ .page .lang-switch label[for="lang-en"],
+#lang-th:focus-visible ~ .page .lang-switch label[for="lang-th"]{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+@media (prefers-reduced-motion: no-preference){
+  .lang-tab, a{transition:background-color .15s ease, color .15s ease, text-decoration-thickness .1s ease;}
+}
+</style>
+</head>
+<body>
+
+<input type="radio" name="lang" id="lang-en" class="lang-radio" checked>
+<input type="radio" name="lang" id="lang-th" class="lang-radio">
+
+<div class="page">
+  <header class="topbar">
+    <span class="crumb mono">link-replacer-bot<span class="crumb-sep">/</span>legal<span class="crumb-sep">/</span>privacy</span>
+    <div class="lang-switch mono">
+      <label for="lang-en" class="lang-tab">EN</label>
+      <label for="lang-th" class="lang-tab">TH</label>
+    </div>
+  </header>
+
+  <main>
+    <article class="doc lang-en" lang="en">
+      <section class="hero">
+        <p class="eyebrow mono">/privacy</p>
+        <h1>Privacy Policy</h1>
+        <p class="dek">What this bot looks at, what it keeps, and for how long.</p>
+        <dl class="meta-card mono">
+          <div><dt>Last-Modified</dt><dd>2026-07-04</dd></div>
+          <div><dt>Content-Language</dt><dd>en, th</dd></div>
+          <div><dt>Data-Retention</dt><dd>In-memory by default; persists only if the operator enables Upstash</dd></div>
+        </dl>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/01</p>
+        <h2>What we process</h2>
+        <ul>
+        <li><strong>Message content</strong> — scanned in real time to detect supported links
+        (TikTok, X, Bilibili, Pixiv, Bluesky, Facebook) and, if spam detection is enabled, to
+        spot the same text posted across many channels in a short window. Message text is not
+        stored after processing; it's only kept in memory briefly to make that decision.</li>
+        <li><strong>Server, channel, and user IDs</strong> — used to know where to reply, which
+        server has disabled auto-conversion, and who to time out if flooding is detected. Not
+        linked to any identity beyond the Discord IDs Discord itself already assigns.</li>
+        <li><strong>Scraped Facebook page data</strong> — when converting a Facebook link, the
+        Bot fetches that public page's Open Graph tags (title, description, image/video URL) to
+        build an embed. This is public data from the linked page itself, not from your Discord
+        account.</li>
+        </ul>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/02</p>
+        <h2>What we store</h2>
+        <p>By default, all state (per-server on/off toggle, conversion counters,
+        flood-detection history) lives in memory only and is lost on restart. If the Bot's
+        operator configures an optional <a href="https://upstash.com">Upstash Redis</a>
+        database, the following persist across restarts instead:</p>
+        <ul>
+        <li>Per-server enabled/disabled state (server ID only).</li>
+        <li>Aggregate conversion counts (numbers only, no message content).</li>
+        </ul>
+        <p>No message content, attachments, or usernames are ever written to persistent
+        storage.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/03</p>
+        <h2>Who can see it</h2>
+        <p>Only the Bot's operator has access to the Upstash database (if configured) and
+        server console logs. Moderation alerts (for spam-flooding incidents) are posted only to
+        the mod-log channel a server admin configures — visible to that server's own
+        moderators, not to the Bot's operator.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/04</p>
+        <h2>Third parties</h2>
+        <p>The Bot fetches pages from the platforms it supports (e.g. facebook.com) and relies
+        on independent, community-run "fixup" services (e.g. fixupx.com, vxbilibili.com) to
+        render embeds for other platforms. Those services see the URL you shared, per their own
+        privacy practices — the Bot does not send them any Discord account information.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/05</p>
+        <h2>Data retention &amp; deletion</h2>
+        <p>Removing the Bot from a server stops all processing for that server immediately. If
+        persistence is enabled, ask the Bot's operator to delete that server's stored toggle
+        state/counters, or they're cleared naturally by disabling persistence.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/06</p>
+        <h2>Children's privacy</h2>
+        <p>The Bot doesn't knowingly collect data from anyone under Discord's own minimum age
+        requirement (13, or higher where required by local law).</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/07</p>
+        <h2>Changes</h2>
+        <p>This policy may be updated as the Bot's features change. Continued use after an
+        update means you accept the revised policy.</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/08</p>
+        <h2>Contact</h2>
+        <p>Questions or data-deletion requests: open an issue on the project's GitHub
+        repository.</p>
+      </section>
+    </article>
+
+    <article class="doc lang-th" lang="th">
+      <section class="hero">
+        <p class="eyebrow mono">/privacy</p>
+        <h1>นโยบายความเป็นส่วนตัว</h1>
+        <p class="dek">สิ่งที่บอทนี้เข้าถึง สิ่งที่เก็บไว้ และเก็บไว้นานแค่ไหน</p>
+        <dl class="meta-card mono">
+          <div><dt>Last-Modified</dt><dd>2026-07-04</dd></div>
+          <div><dt>Content-Language</dt><dd>en, th</dd></div>
+          <div><dt>Data-Retention</dt><dd>อยู่ในหน่วยความจำเท่านั้น เว้นแต่ผู้ดูแลเปิดใช้ Upstash</dd></div>
+        </dl>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/01</p>
+        <h2>ข้อมูลที่เราประมวลผล</h2>
+        <ul>
+        <li><strong>เนื้อหาข้อความ</strong> — ถูกตรวจสอบแบบเรียลไทม์เพื่อค้นหาลิงก์จากแพลตฟอร์ม
+        ที่รองรับ (TikTok, X, Bilibili, Pixiv, Bluesky, Facebook) และหากเปิดใช้งานระบบตรวจจับ
+        สแปม จะใช้ตรวจสอบว่ามีการโพสต์ข้อความเดียวกันในหลายช่องทางในช่วงเวลาสั้น ๆ หรือไม่
+        ข้อความจะไม่ถูกจัดเก็บหลังการประมวลผล เก็บไว้ในหน่วยความจำชั่วคราวเพื่อใช้ตัดสินใจเท่านั้น</li>
+        <li><strong>ID ของเซิร์ฟเวอร์ ช่อง และผู้ใช้</strong> — ใช้เพื่อทราบว่าจะตอบกลับที่ไหน
+        เซิร์ฟเวอร์ใดปิดการแปลงลิงก์อัตโนมัติไว้ และจะ timeout ผู้ใช้คนใดหากตรวจพบการสแปม
+        ไม่มีการเชื่อมโยงกับตัวตนใด ๆ นอกเหนือจาก ID ที่ Discord กำหนดไว้อยู่แล้ว</li>
+        <li><strong>ข้อมูลหน้า Facebook ที่ดึงมา</strong> — เมื่อแปลงลิงก์ Facebook
+        บอทจะดึงแท็ก Open Graph ของหน้าสาธารณะนั้น (ชื่อเรื่อง คำอธิบาย ลิงก์รูปภาพ/วิดีโอ)
+        เพื่อสร้าง embed ซึ่งเป็นข้อมูลสาธารณะจากหน้าเพจนั้นเอง ไม่ใช่จากบัญชี Discord ของคุณ</li>
+        </ul>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/02</p>
+        <h2>ข้อมูลที่เราจัดเก็บ</h2>
+        <p>โดยค่าเริ่มต้น ข้อมูลสถานะทั้งหมด (การเปิด/ปิดการทำงานต่อเซิร์ฟเวอร์ ตัวนับการแปลงลิงก์
+        ประวัติการตรวจจับสแปม) จะถูกเก็บไว้ในหน่วยความจำเท่านั้นและหายไปเมื่อรีสตาร์ท
+        หากผู้ดูแลบอทตั้งค่าฐานข้อมูล <a href="https://upstash.com">Upstash Redis</a>
+        เพิ่มเติม (ทางเลือก) ข้อมูลต่อไปนี้จะถูกเก็บไว้ข้ามการรีสตาร์ทแทน:</p>
+        <ul>
+        <li>สถานะเปิด/ปิดของแต่ละเซิร์ฟเวอร์ (เฉพาะ ID เซิร์ฟเวอร์)</li>
+        <li>จำนวนการแปลงลิงก์สะสม (ตัวเลขเท่านั้น ไม่มีเนื้อหาข้อความ)</li>
+        </ul>
+        <p>เราจะไม่บันทึกเนื้อหาข้อความ ไฟล์แนบ หรือชื่อผู้ใช้ลงในระบบจัดเก็บถาวรเด็ดขาด</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/03</p>
+        <h2>ใครสามารถเข้าถึงข้อมูลได้บ้าง</h2>
+        <p>มีเพียงผู้ดูแลบอทเท่านั้นที่เข้าถึงฐานข้อมูล Upstash (ถ้ามีการตั้งค่า) และ log ของ
+        console การแจ้งเตือน moderation (กรณีตรวจพบการสแปม) จะถูกโพสต์เฉพาะในช่อง mod-log
+        ที่ผู้ดูแลเซิร์ฟเวอร์ตั้งค่าไว้เท่านั้น ซึ่งมองเห็นได้เฉพาะผู้ดูแลของเซิร์ฟเวอร์นั้น
+        ไม่ใช่ผู้ดูแลบอท</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/04</p>
+        <h2>บุคคลที่สาม</h2>
+        <p>บอทจะดึงข้อมูลจากแพลตฟอร์มที่รองรับ (เช่น facebook.com) และใช้บริการ "fixup"
+        ที่ดำเนินการโดยชุมชนอิสระ (เช่น fixupx.com, vxbilibili.com) เพื่อสร้าง embed
+        สำหรับแพลตฟอร์มอื่น ๆ บริการเหล่านั้นจะเห็นเฉพาะ URL ที่คุณแชร์ ตามนโยบายความเป็นส่วนตัว
+        ของแต่ละบริการเอง โดยบอทจะไม่ส่งข้อมูลบัญชี Discord ใด ๆ ให้บริการเหล่านั้น</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/05</p>
+        <h2>การเก็บรักษาและการลบข้อมูล</h2>
+        <p>การนำบอทออกจากเซิร์ฟเวอร์จะหยุดการประมวลผลทั้งหมดในเซิร์ฟเวอร์นั้นทันที
+        หากเปิดใช้งานการจัดเก็บถาวร สามารถขอให้ผู้ดูแลบอทลบสถานะ/ตัวนับที่จัดเก็บไว้ของเซิร์ฟเวอร์
+        นั้นได้ หรือข้อมูลจะหายไปเองเมื่อปิดการใช้งานระบบจัดเก็บถาวร</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/06</p>
+        <h2>ความเป็นส่วนตัวของเด็ก</h2>
+        <p>บอทไม่มีเจตนาเก็บข้อมูลจากผู้ที่มีอายุต่ำกว่าเกณฑ์ขั้นต่ำของ Discord (13 ปี
+        หรือสูงกว่าตามที่กฎหมายท้องถิ่นกำหนด)</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/07</p>
+        <h2>การเปลี่ยนแปลง</h2>
+        <p>นโยบายนี้อาจได้รับการปรับปรุงตามการเปลี่ยนแปลงของฟีเจอร์บอท
+        การใช้งานต่อหลังจากมีการอัปเดตถือว่าคุณยอมรับนโยบายฉบับใหม่</p>
+      </section>
+
+      <section class="clause">
+        <p class="tag mono">/08</p>
+        <h2>ติดต่อเรา</h2>
+        <p>หากมีคำถามหรือต้องการขอให้ลบข้อมูล สามารถเปิด issue ได้ที่ GitHub repository
+        ของโปรเจกต์</p>
+      </section>
+    </article>
+  </main>
+
+  <footer class="footer">
+    <span class="dollar mono">$</span><span class="mono">cd ../tos</span>
+    <a href="/tos">Terms of Service</a>
+    <span class="sep">·</span>
+    <a href="/">Home</a>
+  </footer>
+</div>
+</body>
+</html>
