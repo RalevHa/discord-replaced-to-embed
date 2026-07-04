@@ -11,6 +11,12 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   // Uncached (partial) messages don't carry enough info to re-run conversion —
   // skip rather than risk acting on stale/missing content.
   if (message.partial) return;
+  // Discord fires this event for plenty of non-edits too — most commonly
+  // attaching its own auto-generated embed to the message shortly after it's
+  // sent, which doesn't touch the text at all. Reacting to those races the
+  // slower conversions (e.g. Facebook's scrape) against messageCreate still
+  // in flight and posts a duplicate reply. Only actual text edits should proceed.
+  if (oldMessage.content === message.content) return;
   if (!isHandleableMessage(message, config)) return;
   if (storage.isGuildDisabled(message.guild.id)) return;
 

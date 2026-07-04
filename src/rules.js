@@ -8,6 +8,7 @@ const RULES = [
   ['X (Twitter)',       'x.com',         'fixupx.com'],
   ['Pixiv',             'pixiv.net',     'www.phixiv.net'],
   ['Bluesky',           'bsky.app',      'bskx.app'],
+  ['Instagram',         'instagram.com', 'kkinstagram.com'],
 ];
 
 // Facebook is NOT handled here — there's no reliable "fixup" host to redirect to,
