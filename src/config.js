@@ -41,6 +41,13 @@ module.exports = Object.freeze({
   spamTrustedRoleIds: idList(process.env.SPAM_TRUSTED_ROLE_IDS),
   spamIgnoredChannelIds: idList(process.env.SPAM_IGNORED_CHANNEL_IDS),
 
+  // Optional: GitHub webhook secret for instant redeploy-on-push at
+  // POST /deploy-webhook (see src/deployWebhook.js). Empty = route disabled
+  // (returns 404), so nothing changes for deployments that don't set this.
+  deployWebhookSecret: (process.env.DEPLOY_WEBHOOK_SECRET || '').trim(),
+  // Branch a push must target to trigger a redeploy.
+  deployBranch: process.env.DEPLOY_BRANCH || 'main',
+
   // Upstash Redis REST credentials. If either is missing, storage falls back to
   // in-memory state that resets on restart.
   upstash: {
