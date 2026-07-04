@@ -13,6 +13,8 @@ const { createFloodTracker } = require('./spam');
 const commands = require('./commands');
 const interactionCreate = require('./events/interactionCreate');
 const messageCreate = require('./events/messageCreate');
+const messageUpdate = require('./events/messageUpdate');
+const messageDelete = require('./events/messageDelete');
 const facebookProxy = require('./facebookProxy');
 
 const FB_PROXY_PATH = /^\/fb\/([^/?]+)/;
@@ -96,6 +98,8 @@ function start() {
 
   client.on('interactionCreate', (interaction) => interactionCreate(interaction, ctx));
   client.on('messageCreate', (message) => messageCreate(message, ctx));
+  client.on('messageUpdate', (oldMessage, newMessage) => messageUpdate(oldMessage, newMessage, ctx));
+  client.on('messageDelete', (message) => messageDelete(message, ctx));
 
   client.login(config.token);
   startHealthServer(config.port);
