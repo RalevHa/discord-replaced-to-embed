@@ -114,6 +114,37 @@ test('extractFacebookPost collects every og:image tag for a multi-photo post', a
   }
 });
 
+test('extractFacebookPost captures the post date from the embedded story JSON', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Mark Zuckerberg" />
+      <meta property="og:description" content="Every year I take on a personal challenge" />
+    </head></html>
+    <script>{"post_id":"10102577175875681","story":{"creation_time":1451861194,"unpublished_content_type":"PUBLISHED"}}</script>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.timestamp, 1451861194 * 1000);
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost leaves timestamp null when no story JSON is present', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Cool Post" />
+      <meta property="og:description" content="A description" />
+    </head></html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.timestamp, null);
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost captures a Reel/video URL from og:video:secure_url', async () => {
   const restore = mockFetch(`
     <html><head>
@@ -234,6 +265,28 @@ test('encodeProxyPath/decodeProxyPath round-trip a Facebook URL', () => {
 test('encodeProxyPath produces a URL-safe path segment', () => {
   const encoded = encodeProxyPath('https://www.facebook.com/reel/123?a=1&b=2');
   assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+});
+
+test('buildEmbed shows the post date fixed to UTC+7 in the footer, labeled as such', () => {
+  const [embed] = buildEmbed({
+    title: 'Mark Zuckerberg',
+    description: '',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+    timestamp: 1451861194000, // 2016-01-03T22:46:34Z -> 2016-01-04 05:46 in UTC+7
+  });
+  assert.equal(embed.toJSON().footer.text, 'Facebook • Jan 4, 2016, 5:46 AM (UTC+7)');
+});
+
+test('buildEmbed footer is just the site name when no post date was found', () => {
+  const [embed] = buildEmbed({
+    title: '',
+    description: '',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+    timestamp: null,
+  });
+  assert.equal(embed.toJSON().footer.text, 'Facebook');
 });
 
 test('buildEmbed falls back to a generic description when none was extracted', () => {
