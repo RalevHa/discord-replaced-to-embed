@@ -105,6 +105,16 @@ function extractBrowserNativeVideoUrl(html) {
   return m ? m[1].replace(/\\\//g, '/') : null;
 }
 
+// The post's creation time isn't in any og: tag, but it is embedded (once, as a
+// unix-seconds timestamp) in the page's hydration JSON alongside the story data,
+// e.g. `"story":{"creation_time":1451861194,"unpublished_content_type":"PUBLISHED"...}`.
+// Falls back to null (no date shown) rather than guessing, since the page's
+// internal JSON shape isn't a stable public API and may shift.
+function extractPostTimestamp(html) {
+  const m = /"story":\{"creation_time":(\d+)/.exec(html);
+  return m ? Number(m[1]) * 1000 : null;
+}
+
 function decodeJsonEscapedString(escaped) {
   try {
     return JSON.parse(`"${escaped}"`);
@@ -174,6 +184,7 @@ async function extractFacebookPost(url) {
             extractBrowserNativeVideoUrl(html),
           siteName: tags['og:site_name'] || 'Facebook',
           url: tags['og:url'] || key,
+          timestamp: extractPostTimestamp(html),
         };
       }
     }
@@ -185,14 +196,28 @@ async function extractFacebookPost(url) {
   return data;
 }
 
+// Discord's native embed.setTimestamp() renders in each viewer's own locale/timezone,
+// which would show a different clock time to every reader — not what "UTC+7" means.
+// Format it once, fixed to Bangkok time, and label it explicitly instead.
+function formatUtc7(ms) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(ms);
+}
+
 /** Build Discord embed(s) from extracted post data. Extra photos (beyond the
  * first) ride along as bare image-only embeds sharing the same URL — Discord
  * groups same-URL embeds into one gallery grid, up to 4 images. */
 function buildEmbed(data) {
+  const siteName = data.siteName || 'Facebook';
+  const footerText = data.timestamp ? `${siteName} • ${formatUtc7(data.timestamp)} (UTC+7)` : siteName;
+
   const embed = new EmbedBuilder()
     .setColor(0x1877f2) // Facebook blue
     .setURL(data.url)
-    .setFooter({ text: data.siteName || 'Facebook' });
+    .setFooter({ text: footerText });
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
