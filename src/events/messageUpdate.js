@@ -1,7 +1,13 @@
 // Mirrors messageCreate's link conversion so editing a message's URL updates
 // (or removes) the bot's existing reply instead of leaving it stale.
 
-const { buildConversion, buildReplyPayload, isHandleableMessage } = require('../linkConversion');
+const {
+  buildConversion,
+  buildReplyPayload,
+  isHandleableMessage,
+  delay,
+  SUPPRESS_PROPAGATION_DELAY_MS,
+} = require('../linkConversion');
 const replyTracker = require('../replyTracker');
 
 module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
@@ -50,6 +56,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       // Only a genuinely new reply counts as a conversion — syncing an existing
       // one above is a no-op for stats, or every unrelated edit would re-count it.
       storage.recordStats(replaced);
+      await delay(SUPPRESS_PROPAGATION_DELAY_MS);
       const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
       replyTracker.set(message.id, reply.id);
     }

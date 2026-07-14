@@ -2,7 +2,13 @@
 // embeddable versions (suppressing the original's broken auto-embed).
 
 const { isExempt, handleFlood } = require('../moderation');
-const { buildConversion, buildReplyPayload, isHandleableMessage } = require('../linkConversion');
+const {
+  buildConversion,
+  buildReplyPayload,
+  isHandleableMessage,
+  delay,
+  SUPPRESS_PROPAGATION_DELAY_MS,
+} = require('../linkConversion');
 const replyTracker = require('../replyTracker');
 
 module.exports = async function messageCreate(message, ctx) {
@@ -42,6 +48,7 @@ module.exports = async function messageCreate(message, ctx) {
     // Keep the original, just strip its auto-embed, then reply with the converted
     // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
     await message.suppressEmbeds(true);
+    await delay(SUPPRESS_PROPAGATION_DELAY_MS);
     const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
     replyTracker.set(message.id, reply.id);
   } catch (err) {

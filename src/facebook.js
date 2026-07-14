@@ -6,12 +6,14 @@
 // no headless browser, no external service required.
 
 const { EmbedBuilder } = require('discord.js');
+const { isInSpoiler } = require('./rules');
 
 // Matches facebook.com / fb.watch / fb.com links, scheme and subdomains optional —
 // same shape as the rules in rules.js. Kept separate from RULES since Facebook
-// isn't a text rewrite, it's a native embed.
+// isn't a text rewrite, it's a native embed. Path stops before "||" so it doesn't
+// swallow a spoiler's closing bar, same fix as rules.js.
 const FB_URL_PATTERN =
-  /(?<![\w.@-])(?:https?:\/\/)?(?:[\w-]+\.)*?(?:facebook\.com|fb\.watch|fb\.com)\/[^\s<>"')\]]+/gi;
+  /(?<![\w.@-])(?:https?:\/\/)?(?:[\w-]+\.)*?(?:facebook\.com|fb\.watch|fb\.com)\/(?:(?!\|\|)[^\s<>"')\]])+/gi;
 
 const CACHE_TTL_MS = 15 * 60 * 1000; // absorbs re-shares of the same post without hammering Facebook
 const FETCH_TIMEOUT_MS = 8000;
@@ -27,11 +29,23 @@ const LOGIN_WALL_MARKERS = [
 
 const cache = new Map(); // normalized url -> { data, expires }
 
+/** Find all Facebook links in a block of text (deduped, scheme normalized), each
+ * flagged with whether it fell inside ||spoiler|| bars — first occurrence wins if
+ * the same link appears both spoilered and not. */
+function extractFacebookMatches(text, spoilerRanges = []) {
+  const seen = new Map(); // normalized url -> spoiler
+  for (const m of text.matchAll(FB_URL_PATTERN)) {
+    const url = /^https?:\/\//i.test(m[0]) ? m[0] : `https://${m[0]}`;
+    if (!seen.has(url)) {
+      seen.set(url, isInSpoiler(spoilerRanges, m.index, m.index + m[0].length));
+    }
+  }
+  return [...seen].map(([url, spoiler]) => ({ url, spoiler }));
+}
+
 /** Find all Facebook links in a block of text (deduped, scheme normalized). */
 function extractFacebookUrls(text) {
-  const matches = text.match(FB_URL_PATTERN) || [];
-  const urls = matches.map((m) => (/^https?:\/\//i.test(m) ? m : `https://${m}`));
-  return [...new Set(urls)];
+  return extractFacebookMatches(text).map((m) => m.url);
 }
 
 /** Strip tracking params so re-shares of the same post share a cache entry. */
@@ -58,14 +72,22 @@ function decodeHtmlEntities(str) {
     .replace(/&#39;/g, "'");
 }
 
+// Multi-photo posts repeat the og:image tag once per photo, so those need
+// collecting into a list rather than treated as a single overwritable tag.
 function parseOgTags(html) {
   const tags = {};
+  const images = [];
+  const collect = (key, value) => {
+    const decoded = decodeHtmlEntities(value);
+    if (key === 'og:image') images.push(decoded);
+    else tags[key] = decoded;
+  };
   const re1 = /<meta\s+(?:property|name)=["'](og:[^"']+)["']\s+content=["']([^"']*)["'][^>]*>/gi;
   let m;
-  while ((m = re1.exec(html))) tags[m[1]] = decodeHtmlEntities(m[2]);
+  while ((m = re1.exec(html))) collect(m[1], m[2]);
   const re2 = /<meta\s+content=["']([^"']*)["']\s+(?:property|name)=["'](og:[^"']+)["'][^>]*>/gi;
-  while ((m = re2.exec(html))) tags[m[2]] = decodeHtmlEntities(m[1]);
-  return tags;
+  while ((m = re2.exec(html))) collect(m[2], m[1]);
+  return { tags, images: [...new Set(images)] };
 }
 
 function looksLikeLoginWall(tags) {
@@ -129,14 +151,17 @@ async function extractFacebookPost(url) {
 
     if (response.ok) {
       const html = await response.text();
-      const tags = parseOgTags(html);
-      const ogHasContent = tags['og:title'] || tags['og:description'] || tags['og:image'];
+      const { tags, images } = parseOgTags(html);
+      const ogHasContent = tags['og:title'] || tags['og:description'] || images.length;
       const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
       if ((ogHasContent || fallback) && !looksLikeLoginWall(tags)) {
+        // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.
+        const allImages = images.length ? images.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
         data = {
           title: tags['og:title'] || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',
-          image: tags['og:image'] || (fallback && fallback.image) || null,
+          image: allImages[0] || null,
+          images: allImages,
           // Reels/videos expose a direct (usually short-lived, signed) file URL here.
           // Posted as plain text it lets Discord's own unfurler render a playable
           // video, which a bot-built embed can't do (see buildEmbed below). Reels no
@@ -160,7 +185,9 @@ async function extractFacebookPost(url) {
   return data;
 }
 
-/** Build a Discord embed from extracted post data. */
+/** Build Discord embed(s) from extracted post data. Extra photos (beyond the
+ * first) ride along as bare image-only embeds sharing the same URL — Discord
+ * groups same-URL embeds into one gallery grid, up to 4 images. */
 function buildEmbed(data) {
   const embed = new EmbedBuilder()
     .setColor(0x1877f2) // Facebook blue
@@ -169,9 +196,12 @@ function buildEmbed(data) {
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
-  if (data.image) embed.setImage(data.image);
 
-  return embed;
+  const images = data.images && data.images.length ? data.images : data.image ? [data.image] : [];
+  if (images[0]) embed.setImage(images[0]);
+  const galleryEmbeds = images.slice(1, 4).map((img) => new EmbedBuilder().setURL(data.url).setImage(img));
+
+  return [embed, ...galleryEmbeds];
 }
 
 /** Opaque path segment for the video-proxy route (see facebookProxy.js). */
@@ -185,6 +215,7 @@ function decodeProxyPath(segment) {
 
 module.exports = {
   extractFacebookUrls,
+  extractFacebookMatches,
   extractFacebookPost,
   buildEmbed,
   normalizeUrl,

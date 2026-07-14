@@ -79,4 +79,4 @@ function applyReplacements(text) {
   return { newText, replaced };
 }
 
-module.exports = { applyReplacements, RULES, TRIGGER };
+module.exports = { applyReplacements, RULES, TRIGGER, findSpoilerRanges, isInSpoiler };

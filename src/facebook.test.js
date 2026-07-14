@@ -86,6 +86,29 @@ test('extractFacebookPost parses og:title/description/image', async () => {
     assert.equal(data.title, 'Cool Post');
     assert.equal(data.description, 'A description');
     assert.equal(data.image, 'https://scontent.example/img.jpg');
+    assert.deepEqual(data.images, ['https://scontent.example/img.jpg']);
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost collects every og:image tag for a multi-photo post', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Album" />
+      <meta property="og:image" content="https://scontent.example/1.jpg" />
+      <meta property="og:image" content="https://scontent.example/2.jpg" />
+      <meta property="og:image" content="https://scontent.example/3.jpg" />
+    </head></html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.image, 'https://scontent.example/1.jpg');
+    assert.deepEqual(data.images, [
+      'https://scontent.example/1.jpg',
+      'https://scontent.example/2.jpg',
+      'https://scontent.example/3.jpg',
+    ]);
   } finally {
     restore();
   }
@@ -214,8 +237,35 @@ test('encodeProxyPath produces a URL-safe path segment', () => {
 });
 
 test('buildEmbed falls back to a generic description when none was extracted', () => {
-  const embed = buildEmbed({ title: '', description: '', image: null, siteName: 'Facebook', url: 'https://facebook.com/x' });
+  const [embed] = buildEmbed({ title: '', description: '', image: null, siteName: 'Facebook', url: 'https://facebook.com/x' });
   const json = embed.toJSON();
   assert.equal(json.description, '[View on Facebook]');
   assert.equal(json.color, 0x1877f2);
+});
+
+test('buildEmbed returns one gallery embed per extra photo, sharing the same URL', () => {
+  const embeds = buildEmbed({
+    title: 'A post',
+    description: '',
+    images: ['https://scontent.example/1.jpg', 'https://scontent.example/2.jpg', 'https://scontent.example/3.jpg'],
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+  });
+  assert.equal(embeds.length, 3);
+  assert.equal(embeds[0].toJSON().image.url, 'https://scontent.example/1.jpg');
+  assert.equal(embeds[0].toJSON().title, 'A post');
+  assert.equal(embeds[1].toJSON().image.url, 'https://scontent.example/2.jpg');
+  assert.equal(embeds[1].toJSON().url, 'https://facebook.com/x');
+  assert.equal(embeds[1].toJSON().title, undefined);
+});
+
+test('buildEmbed caps the gallery at 4 images', () => {
+  const embeds = buildEmbed({
+    title: '',
+    description: '',
+    images: ['1', '2', '3', '4', '5'].map((n) => `https://scontent.example/${n}.jpg`),
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+  });
+  assert.equal(embeds.length, 4);
 });
