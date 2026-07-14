@@ -4,10 +4,16 @@
 // script (detached, so it survives this process being restarted mid-deploy).
 
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
 const DEPLOY_SCRIPT = path.join(__dirname, '..', 'scripts', 'auto-deploy.ps1');
+// Detached + unref'd (fire-and-forget) so this survives the webhook process
+// restarting mid-deploy — but that also means nothing here ever sees a failure.
+// Append the script's own output to a log file instead of discarding it, so a
+// silent git/npm/pm2 failure on the server leaves a trail to diagnose from.
+const DEPLOY_LOG = path.join(__dirname, '..', 'scripts', 'deploy.log');
 
 function isValidSignature(secret, body, signatureHeader) {
   const expected = `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`;
@@ -17,9 +23,10 @@ function isValidSignature(secret, body, signatureHeader) {
 }
 
 function triggerDeploy() {
+  const log = fs.openSync(DEPLOY_LOG, 'a');
   spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', DEPLOY_SCRIPT], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', log, log],
     windowsHide: true,
   }).unref();
 }
