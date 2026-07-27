@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { api } from './api';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -38,8 +39,19 @@ export default function App() {
       .catch(() => setAuthenticated(false));
   }, []);
 
+  // Returns true when a passkey (2nd factor) is required — Login.jsx uses that
+  // to switch to its 2nd step instead of unlocking the dashboard immediately.
   async function login(password) {
-    await api.login(password);
+    const result = await api.login(password);
+    if (result.requiresPasskey) return true;
+    setAuthenticated(true);
+    return false;
+  }
+
+  async function verifyPasskey() {
+    const optionsJSON = await api.passkeyLoginOptions();
+    const response = await startAuthentication({ optionsJSON });
+    await api.passkeyLoginVerify(response);
     setAuthenticated(true);
   }
 
@@ -52,7 +64,11 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/admin">
-      {authenticated ? <Layout onLogout={logout} /> : <Login onLogin={login} />}
+      {authenticated ? (
+        <Layout onLogout={logout} />
+      ) : (
+        <Login onLogin={login} onVerifyPasskey={verifyPasskey} onCancelPasskey={logout} />
+      )}
     </BrowserRouter>
   );
 }

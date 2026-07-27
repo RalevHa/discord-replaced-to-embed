@@ -1,0 +1,92 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { createStorage } = require('./storage');
+
+// No Upstash config in any of these — exercises the in-memory fallback, which
+// is deterministic and doesn't need a real Redis instance.
+function memStorage() {
+  return createStorage({ upstash: {} });
+}
+
+test('hasPasskeys is false until one is added', async () => {
+  const storage = memStorage();
+  assert.equal(storage.hasPasskeys(), false);
+  await storage.addPasskey({
+    id: 'cred-1',
+    publicKey: 'base64url-pubkey',
+    counter: 0,
+    transports: ['internal'],
+    deviceType: 'singleDevice',
+    backedUp: false,
+    name: 'Bitwarden',
+    createdAt: 1000,
+  });
+  assert.equal(storage.hasPasskeys(), true);
+});
+
+test('listPasskeys omits the public key but keeps display fields', async () => {
+  const storage = memStorage();
+  await storage.addPasskey({
+    id: 'cred-1',
+    publicKey: 'secret-key-material',
+    counter: 0,
+    transports: ['internal'],
+    deviceType: 'singleDevice',
+    backedUp: false,
+    name: 'Bitwarden',
+    createdAt: 1000,
+  });
+  const list = storage.listPasskeys();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].id, 'cred-1');
+  assert.equal(list[0].name, 'Bitwarden');
+  assert.equal(list[0].createdAt, 1000);
+  assert.equal('publicKey' in list[0], false);
+});
+
+test('getPasskey returns the full internal record, including the public key', async () => {
+  const storage = memStorage();
+  await storage.addPasskey({
+    id: 'cred-1',
+    publicKey: 'secret-key-material',
+    counter: 0,
+    transports: ['internal'],
+    deviceType: 'singleDevice',
+    backedUp: false,
+    name: 'Bitwarden',
+    createdAt: 1000,
+  });
+  assert.equal(storage.getPasskey('cred-1').publicKey, 'secret-key-material');
+  assert.equal(storage.getPasskey('missing'), null);
+});
+
+test('listPasskeyDescriptors is just { id, transports } for every credential', async () => {
+  const storage = memStorage();
+  await storage.addPasskey({ id: 'a', publicKey: 'x', counter: 0, transports: ['usb'], name: 'A', createdAt: 1 });
+  await storage.addPasskey({ id: 'b', publicKey: 'y', counter: 0, transports: ['internal'], name: 'B', createdAt: 2 });
+  const descriptors = storage.listPasskeyDescriptors().sort((a, b) => a.id.localeCompare(b.id));
+  assert.deepEqual(descriptors, [
+    { id: 'a', transports: ['usb'] },
+    { id: 'b', transports: ['internal'] },
+  ]);
+});
+
+test('updatePasskeyCounter bumps the stored counter (replay-attack defense)', async () => {
+  const storage = memStorage();
+  await storage.addPasskey({ id: 'cred-1', publicKey: 'x', counter: 0, transports: [], name: 'A', createdAt: 1 });
+  await storage.updatePasskeyCounter('cred-1', 7);
+  assert.equal(storage.getPasskey('cred-1').counter, 7);
+});
+
+test('updatePasskeyCounter on an unknown id is a no-op, not a throw', async () => {
+  const storage = memStorage();
+  await assert.doesNotReject(() => storage.updatePasskeyCounter('nope', 5));
+});
+
+test('removePasskey removes it from both listPasskeys and hasPasskeys', async () => {
+  const storage = memStorage();
+  await storage.addPasskey({ id: 'cred-1', publicKey: 'x', counter: 0, transports: [], name: 'A', createdAt: 1 });
+  await storage.removePasskey('cred-1');
+  assert.equal(storage.hasPasskeys(), false);
+  assert.deepEqual(storage.listPasskeys(), []);
+});

@@ -64,4 +64,17 @@ module.exports = Object.freeze({
   // Name pm2 knows this process by (see scripts/auto-deploy.ps1's `pm2 restart`).
   // One place for it since the admin panel's process controls need it too.
   pm2ProcessName: (process.env.PM2_PROCESS_NAME || 'discord-bot').trim(),
+
+  // Public origin the admin panel is reached at — needed for passkey (WebAuthn)
+  // login: a passkey is bound to one exact origin/hostname at registration time
+  // and the browser refuses to use it anywhere else, so this has to match the
+  // address bar precisely, not just point at *a* working URL. Defaults to the
+  // same tunnel hostname already configured for the Facebook proxy, since
+  // that's normally the same public domain; set ADMIN_PUBLIC_URL explicitly
+  // only if the admin panel is reached at a different host. Empty = passkey
+  // routes are disabled (404), same "absent config = feature off" pattern as
+  // adminPassword above.
+  adminPublicUrl: (process.env.ADMIN_PUBLIC_URL || process.env.FACEBOOK_PROXY_BASE_URL || '')
+    .trim()
+    .replace(/\/$/, ''),
 });

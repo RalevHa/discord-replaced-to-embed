@@ -226,6 +226,26 @@ just visit `http://<host>:<PORT>/admin`.
 - `scripts/auto-deploy.ps1` rebuilds the admin panel (`npm run build:admin`) on every
   deploy, so a fresh `git pull` on the server doesn't leave `/admin` serving stale UI.
 
+### Passkey login (optional 2nd factor)
+
+Once `ADMIN_PUBLIC_URL` is set (it defaults to `FACEBOOK_PROXY_BASE_URL` if that's
+already the same public domain — see `.env.example`), a **Passkeys** card appears
+on the dashboard. Add one there — any WebAuthn-capable authenticator works
+(Bitwarden's browser extension/app, Windows Hello, a security key, etc.) — and
+from then on, logging in is two steps: the password first, then that passkey.
+The password alone only gets you in when *no* passkey is registered yet, which
+is how you reach the dashboard to add the first one.
+
+`ADMIN_PUBLIC_URL` must be the exact origin the browser uses (scheme + host, no
+trailing slash) — WebAuthn binds a passkey to one specific origin and simply
+won't offer it anywhere else, so a mismatch here isn't a bug to debug, it's the
+security model working as intended.
+
+Losing access to every registered passkey (e.g. a new machine with Bitwarden not
+set up) locks you out of `/admin` — the password alone won't override a
+registered 2nd factor. Recovering means editing `.env`/Redis directly on the
+server (there's no in-app "reset").
+
 ## Deployment
 
 ### Option A: Render free tier + UptimeRobot
