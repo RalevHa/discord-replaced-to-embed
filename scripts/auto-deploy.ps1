@@ -13,7 +13,7 @@ $Branch = if ($env:DEPLOY_BRANCH) { $env:DEPLOY_BRANCH } else { 'main' }
 $LogFile = Join-Path $PSScriptRoot 'deploy.log'
 
 function Write-Log([string]$message) {
-    Add-Content -Path $LogFile -Value "$(Get-Date -Format u) $message"
+    Add-Content -Path $LogFile -Value "$(Get-Date -Format u) $message" -Encoding utf8
 }
 
 # $ErrorActionPreference only governs PowerShell's own errors, not exit codes from
@@ -34,7 +34,13 @@ function Assert-Success([string]$step) {
 # just to have somewhere to print to.
 function Invoke-Logged([string]$Exe, [string[]]$ExeArgs) {
     Write-Log "> $Exe $($ExeArgs -join ' ')"
-    & $Exe @ExeArgs *>> $LogFile
+    # Piped into Add-Content (not `*>> $LogFile`) so this lands in the same
+    # encoding as Write-Log's own lines. The `*>>` redirection operator defaults
+    # to UTF-16LE in Windows PowerShell 5.1, while Add-Content defaults to
+    # UTF-8 here — mixing the two in one file makes a plain-text viewer render
+    # every other byte of the UTF-16 lines as a null, i.e. "Y o u r   b r a
+    # n c h" instead of "Your branch".
+    & $Exe @ExeArgs 2>&1 | Add-Content -Path $LogFile -Encoding utf8
 }
 
 # The webhook fires this script detached, once per push delivery, with no
