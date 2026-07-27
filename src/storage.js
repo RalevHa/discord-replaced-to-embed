@@ -12,6 +12,7 @@ const KEYS = {
   since: 'stats:since', // ms timestamp, set once
   spamCaught: 'stats:spam_caught', // integer counter of flood incidents handled
   rollChannels: 'roll_channels', // hash: guild ID -> JSON array of allowed channel IDs
+  passkeys: 'admin_passkeys', // hash: credential ID -> JSON WebAuthn credential record
 };
 
 /**
@@ -33,6 +34,11 @@ function createStorage(config) {
   const rollChannelsByGuild = new Map();
   // In-memory stats — the source of truth only when Redis is absent.
   const mem = { startedAt: Date.now(), total: 0, byLabel: {}, spamCaught: 0 };
+  // In-memory cache of admin passkey credentials: credential ID -> record.
+  // With no Redis configured these don't survive a restart, same as everything
+  // else here — the admin panel's passkey UI already surfaces that tradeoff
+  // via storage.persistent.
+  const passkeysById = new Map();
 
   return {
     /** Whether state will survive a restart. */
@@ -58,6 +64,16 @@ function createStorage(config) {
             rollChannelsByGuild.set(guildId, new Set(channelIds));
           } else {
             console.error(`Skipping malformed roll-channels entry for guild ${guildId}:`, channelIds);
+          }
+        }
+
+        // Same hgetall-already-deserializes caveat as rollChannels above.
+        const passkeys = await redis.hgetall(KEYS.passkeys);
+        for (const [id, record] of Object.entries(passkeys || {})) {
+          if (record && typeof record === 'object') {
+            passkeysById.set(id, record);
+          } else {
+            console.error(`Skipping malformed passkey entry ${id}:`, record);
           }
         }
 
@@ -167,6 +183,55 @@ function createStorage(config) {
         since: Number(since) || mem.startedAt,
         spamCaught: Number(spamCaught) || 0,
       };
+    },
+
+    /** Whether the admin has registered any passkeys — gates the 2nd login step. */
+    hasPasskeys() {
+      return passkeysById.size > 0;
+    },
+
+    /** Full internal record (includes the public key) — for verifying a login/registration. */
+    getPasskey(id) {
+      return passkeysById.get(id) || null;
+    },
+
+    /** Every credential's { id, transports } — for WebAuthn's allow/excludeCredentials lists. */
+    listPasskeyDescriptors() {
+      return [...passkeysById.values()].map((p) => ({ id: p.id, transports: p.transports }));
+    },
+
+    /** Display-safe list for the admin panel (no public key material). */
+    listPasskeys() {
+      return [...passkeysById.values()].map((p) => ({
+        id: p.id,
+        name: p.name,
+        createdAt: p.createdAt,
+        deviceType: p.deviceType,
+        backedUp: p.backedUp,
+      }));
+    },
+
+    /** Persist a newly-registered credential. */
+    async addPasskey(record) {
+      passkeysById.set(record.id, record);
+      if (!redis) return;
+      await redis.hset(KEYS.passkeys, { [record.id]: JSON.stringify(record) });
+    },
+
+    /** Bump a credential's signature counter after a successful login (replay-attack defense). */
+    async updatePasskeyCounter(id, counter) {
+      const record = passkeysById.get(id);
+      if (!record) return;
+      record.counter = counter;
+      if (!redis) return;
+      await redis.hset(KEYS.passkeys, { [id]: JSON.stringify(record) });
+    },
+
+    /** Remove a passkey (e.g. a lost/decommissioned device). */
+    async removePasskey(id) {
+      passkeysById.delete(id);
+      if (!redis) return;
+      await redis.hdel(KEYS.passkeys, id);
     },
   };
 }

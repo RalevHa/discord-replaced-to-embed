@@ -52,6 +52,7 @@ async function buildStatus({ client, storage, config }) {
     deployLog: tailDeployLog(),
     facebookEmbedEnabled: config.facebookEmbedEnabled,
     spamDetectionEnabled: config.spamDetectionEnabled,
+    passkeysAvailable: Boolean(config.adminPublicUrl),
   };
 }
 

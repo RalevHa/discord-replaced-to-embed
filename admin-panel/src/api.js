@@ -34,4 +34,12 @@ export const api = {
   pm2Restart: () => request('/pm2/restart', { method: 'POST' }),
   pm2Stop: () => request('/pm2/stop', { method: 'POST' }),
   pm2Start: () => request('/pm2/start', { method: 'POST' }),
+  passkeyLoginOptions: () => request('/passkey/login-options', { method: 'POST' }),
+  passkeyLoginVerify: (response) =>
+    request('/passkey/login-verify', { method: 'POST', body: JSON.stringify({ response }) }),
+  passkeys: () => request('/passkey'),
+  passkeyRegisterOptions: () => request('/passkey/register-options', { method: 'POST' }),
+  passkeyRegisterVerify: (name, response) =>
+    request('/passkey/register-verify', { method: 'POST', body: JSON.stringify({ name, response }) }),
+  removePasskey: (id) => request(`/passkey/${id}`, { method: 'DELETE' }),
 };

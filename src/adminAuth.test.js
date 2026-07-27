@@ -1,10 +1,31 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createLoginLockout, timingSafeEqualStr, clientIp } = require('./adminAuth');
+const { createAdminAuth, createLoginLockout, timingSafeEqualStr, clientIp } = require('./adminAuth');
 
 function fakeClock(start = 1000) {
   let t = start;
   return { now: () => t, advance: (ms) => (t += ms) };
+}
+
+function fakeReqRes(body) {
+  const req = { body, session: {}, headers: {}, ip: '1.2.3.4' };
+  const res = {
+    statusCode: 200,
+    body: undefined,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
+  return { req, res };
+}
+
+function fakeStorage(hasPasskeys) {
+  return { hasPasskeys: () => hasPasskeys };
 }
 
 test('timingSafeEqualStr matches equal strings and rejects mismatches/different lengths', () => {
@@ -44,6 +65,41 @@ test('clearFailures resets the counter (successful login forgets prior failures)
 test('clientIp prefers CF-Connecting-IP over req.ip (unspoofable vs. attacker-controlled X-Forwarded-For)', () => {
   assert.equal(clientIp({ headers: { 'cf-connecting-ip': '9.9.9.9' }, ip: '1.2.3.4' }), '9.9.9.9');
   assert.equal(clientIp({ headers: {}, ip: '1.2.3.4' }), '1.2.3.4');
+});
+
+test('handleLogin: correct password with no passkeys registered logs in fully (bootstrap case)', () => {
+  const auth = createAdminAuth({ adminPassword: 'hunter2', sessionSecret: 'x' }, fakeStorage(false));
+  const { req, res } = fakeReqRes({ password: 'hunter2' });
+  auth.handleLogin(req, res);
+  assert.equal(req.session.authenticated, true);
+  assert.equal(req.session.passwordVerified, undefined);
+  assert.deepEqual(res.body, { ok: true, requiresPasskey: false });
+});
+
+test('handleLogin: correct password with a passkey registered only marks passwordVerified, not authenticated', () => {
+  const auth = createAdminAuth({ adminPassword: 'hunter2', sessionSecret: 'x' }, fakeStorage(true));
+  const { req, res } = fakeReqRes({ password: 'hunter2' });
+  auth.handleLogin(req, res);
+  assert.equal(req.session.authenticated, false);
+  assert.equal(req.session.passwordVerified, true);
+  assert.deepEqual(res.body, { ok: true, requiresPasskey: true });
+});
+
+test('handleLogin: wrong password never sets passwordVerified even with a passkey registered', () => {
+  const auth = createAdminAuth({ adminPassword: 'hunter2', sessionSecret: 'x' }, fakeStorage(true));
+  const { req, res } = fakeReqRes({ password: 'wrong' });
+  auth.handleLogin(req, res);
+  assert.equal(res.statusCode, 401);
+  assert.equal(req.session.authenticated, undefined);
+  assert.equal(req.session.passwordVerified, undefined);
+});
+
+test('handleSession reports passwordVerified so the frontend can resume the 2nd step after a refresh', () => {
+  const auth = createAdminAuth({ adminPassword: 'hunter2', sessionSecret: 'x' }, fakeStorage(true));
+  const { req, res } = fakeReqRes();
+  req.session = { authenticated: false, passwordVerified: true };
+  auth.handleSession(req, res);
+  assert.deepEqual(res.body, { authenticated: false, passwordVerified: true });
 });
 
 test('different keys (IPs) are tracked independently', () => {

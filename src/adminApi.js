@@ -8,6 +8,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const { ChannelType } = require('discord.js');
 const { createAdminAuth } = require('./adminAuth');
+const { createPasskeyAuth } = require('./passkeyAuth');
 const dashboard = require('./dashboard');
 const deployWebhook = require('./deployWebhook');
 const envFile = require('./envFile');
@@ -40,7 +41,8 @@ function createAdminApp(ctx) {
     throw new Error('SESSION_SECRET must be set when ADMIN_PASSWORD is set.');
   }
 
-  const auth = createAdminAuth(config);
+  const auth = createAdminAuth(config, storage);
+  const passkey = createPasskeyAuth({ config, storage });
 
   // Only trust the loopback hop (cloudflared runs locally) — req.ip is a fallback
   // for local/non-Cloudflare use; the login lockout keys on CF-Connecting-IP instead,
@@ -54,6 +56,15 @@ function createAdminApp(ctx) {
   api.post('/login', auth.handleLogin);
   api.post('/logout', auth.handleLogout);
   api.get('/session', auth.handleSession);
+
+  if (passkey.enabled()) {
+    // Public (no requireAuth) — this pair of routes IS the 2nd login step.
+    // Each handler re-checks session.passwordVerified itself before doing
+    // anything, since that's a passkey-specific gate the generic requireAuth
+    // below doesn't know about.
+    api.post('/passkey/login-options', passkey.handleLoginOptions);
+    api.post('/passkey/login-verify', passkey.handleLoginVerify);
+  }
 
   const authed = express.Router();
   authed.use(auth.requireAuth);
@@ -170,6 +181,13 @@ function createAdminApp(ctx) {
     deployWebhook.startProcess(config.pm2ProcessName);
     res.json({ ok: true, starting: true });
   });
+
+  if (passkey.enabled()) {
+    authed.get('/passkey', passkey.handleList);
+    authed.post('/passkey/register-options', passkey.handleRegisterOptions);
+    authed.post('/passkey/register-verify', passkey.handleRegisterVerify);
+    authed.delete('/passkey/:id', passkey.handleRemove);
+  }
 
   api.use(authed);
   app.use('/admin/api', api);

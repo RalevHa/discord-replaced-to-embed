@@ -47,8 +47,13 @@ function createLoginLockout({ maxAttempts = MAX_ATTEMPTS, lockoutMs = LOCKOUT_MS
   };
 }
 
-/** @param {{ adminPassword: string, sessionSecret: string }} config */
-function createAdminAuth(config) {
+/**
+ * @param {{ adminPassword: string, sessionSecret: string }} config
+ * @param {{ hasPasskeys: () => boolean }} storage Whether a passkey is
+ *   registered decides if a correct password alone logs you in (bootstrap —
+ *   there's no 2nd factor to check yet) or only starts a 2nd, passkey step.
+ */
+function createAdminAuth(config, storage) {
   const lockout = createLoginLockout();
 
   const sessionMiddleware = session({
@@ -87,8 +92,19 @@ function createAdminAuth(config) {
     }
 
     lockout.clearFailures(ip);
-    req.session.authenticated = true;
-    res.json({ ok: true });
+    if (storage.hasPasskeys()) {
+      // 2nd factor required — passwordVerified alone does NOT satisfy requireAuth
+      // below, only handleLoginVerify (src/passkeyAuth.js) setting authenticated does.
+      req.session.authenticated = false;
+      req.session.passwordVerified = true;
+      res.json({ ok: true, requiresPasskey: true });
+    } else {
+      // No passkey registered yet — password is the only factor there is to
+      // check, same as before this feature existed. This is also how you get
+      // into the dashboard to register your first passkey.
+      req.session.authenticated = true;
+      res.json({ ok: true, requiresPasskey: false });
+    }
   }
 
   function handleLogout(req, res) {
@@ -96,7 +112,10 @@ function createAdminAuth(config) {
   }
 
   function handleSession(req, res) {
-    res.json({ authenticated: Boolean(req.session?.authenticated) });
+    res.json({
+      authenticated: Boolean(req.session?.authenticated),
+      passwordVerified: Boolean(req.session?.passwordVerified),
+    });
   }
 
   return { sessionMiddleware, requireAuth, handleLogin, handleLogout, handleSession };

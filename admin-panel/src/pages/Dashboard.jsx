@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { startRegistration } from '@simplewebauthn/browser';
 import { api } from '../api';
 
 function formatDuration(ms) {
@@ -97,6 +98,80 @@ function Pm2Panel() {
   );
 }
 
+function PasskeyPanel() {
+  const [passkeys, setPasskeys] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    api.passkeys().then(setPasskeys).catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function addPasskey() {
+    const name = window.prompt('Name this passkey (e.g. "Bitwarden", "This laptop"):');
+    if (!name) return;
+    setBusy(true);
+    setError('');
+    try {
+      const optionsJSON = await api.passkeyRegisterOptions();
+      const response = await startRegistration({ optionsJSON });
+      await api.passkeyRegisterVerify(name, response);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePasskey(id) {
+    if (!window.confirm('Remove this passkey?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.removePasskey(id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!passkeys) return null;
+
+  return (
+    <div className="card">
+      <h3>Passkeys</h3>
+      <p className="dim">
+        {passkeys.length
+          ? 'Registered — logging in now needs the password AND one of these.'
+          : 'None yet — logging in only needs the password. Add one below to require both.'}
+      </p>
+      {passkeys.length > 0 && (
+        <ul>
+          {passkeys.map((p) => (
+            <li key={p.id}>
+              {p.name} <span className="dim">— added {new Date(p.createdAt).toLocaleDateString()}</span>{' '}
+              <button onClick={() => removePasskey(p.id)} disabled={busy}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button onClick={addPasskey} disabled={busy}>
+        {busy ? 'Waiting for passkey…' : 'Add a passkey'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [status, setStatus] = useState(null);
   const [deploying, setDeploying] = useState(false);
@@ -168,6 +243,8 @@ export default function Dashboard() {
         </button>
         <pre>{status.deployLog.join('\n') || '(no deploy log yet)'}</pre>
       </div>
+
+      {status.passkeysAvailable && <PasskeyPanel />}
 
       <Pm2Panel />
     </div>
