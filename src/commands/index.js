@@ -8,6 +8,8 @@ const list = [
   require('./sources'),
   require('./toggle'),
   require('./stats'),
+  require('./roll'),
+  require('./rollChannel'),
   require('./help'),
 ];
 
