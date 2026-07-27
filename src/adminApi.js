@@ -42,7 +42,10 @@ function createAdminApp(ctx) {
 
   const auth = createAdminAuth(config);
 
-  app.set('trust proxy', true); // req.ip reflects the real client behind the Cloudflare Tunnel
+  // Only trust the loopback hop (cloudflared runs locally) — req.ip is a fallback
+  // for local/non-Cloudflare use; the login lockout keys on CF-Connecting-IP instead,
+  // since that header (unlike X-Forwarded-For) can't be spoofed by the client.
+  app.set('trust proxy', 'loopback');
   app.use(express.json());
   app.use(cookieParser());
   app.use(auth.sessionMiddleware);

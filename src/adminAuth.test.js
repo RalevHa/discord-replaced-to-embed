@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createLoginLockout, timingSafeEqualStr } = require('./adminAuth');
+const { createLoginLockout, timingSafeEqualStr, clientIp } = require('./adminAuth');
 
 function fakeClock(start = 1000) {
   let t = start;
@@ -39,6 +39,11 @@ test('clearFailures resets the counter (successful login forgets prior failures)
   lockout.clearFailures('1.2.3.4');
   lockout.recordFailure('1.2.3.4');
   assert.equal(lockout.isLocked('1.2.3.4'), false);
+});
+
+test('clientIp prefers CF-Connecting-IP over req.ip (unspoofable vs. attacker-controlled X-Forwarded-For)', () => {
+  assert.equal(clientIp({ headers: { 'cf-connecting-ip': '9.9.9.9' }, ip: '1.2.3.4' }), '9.9.9.9');
+  assert.equal(clientIp({ headers: {}, ip: '1.2.3.4' }), '1.2.3.4');
 });
 
 test('different keys (IPs) are tracked independently', () => {

@@ -14,6 +14,12 @@ function timingSafeEqualStr(a, b) {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 }
 
+// Cloudflare overwrites this header at its edge, so unlike X-Forwarded-For a
+// client can't spoof it to get a fresh lockout bucket per request.
+function clientIp(req) {
+  return req.headers['cf-connecting-ip'] || req.ip;
+}
+
 /**
  * Track failed logins per key (IP) and lock out after too many.
  * @param {object} [opts]
@@ -67,19 +73,20 @@ function createAdminAuth(config) {
   }
 
   function handleLogin(req, res) {
-    if (lockout.isLocked(req.ip)) {
+    const ip = clientIp(req);
+    if (lockout.isLocked(ip)) {
       res.status(429).json({ error: 'Too many failed attempts. Try again later.' });
       return;
     }
 
     const { password } = req.body || {};
     if (typeof password !== 'string' || !timingSafeEqualStr(password, config.adminPassword)) {
-      lockout.recordFailure(req.ip);
+      lockout.recordFailure(ip);
       res.status(401).json({ error: 'Wrong password.' });
       return;
     }
 
-    lockout.clearFailures(req.ip);
+    lockout.clearFailures(ip);
     req.session.authenticated = true;
     res.json({ ok: true });
   }
@@ -95,4 +102,4 @@ function createAdminAuth(config) {
   return { sessionMiddleware, requireAuth, handleLogin, handleLogout, handleSession };
 }
 
-module.exports = { createAdminAuth, createLoginLockout, timingSafeEqualStr };
+module.exports = { createAdminAuth, createLoginLockout, timingSafeEqualStr, clientIp };
