@@ -4,15 +4,18 @@
 // script (detached, so it survives this process being restarted mid-deploy).
 
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const DEPLOY_SCRIPT = path.join(__dirname, '..', 'scripts', 'auto-deploy.ps1');
 // Detached + unref'd (fire-and-forget) so this survives the webhook process
 // restarting mid-deploy — but that also means nothing here ever sees a failure.
-// Append the script's own output to a log file instead of discarding it, so a
-// silent git/npm/pm2 failure on the server leaves a trail to diagnose from.
+// auto-deploy.ps1 logs its own progress to scripts/deploy.log (see Write-Log
+// in that script) rather than us capturing its stdio here: piping a raw file
+// descriptor into a Windows child process's stdio doesn't reliably end up in
+// the file, and it also means git/npm/pm2 run inside an un-redirected child
+// console, which is what made those commands flash a visible window on every
+// deploy.
+const DEPLOY_SCRIPT = path.join(__dirname, '..', 'scripts', 'auto-deploy.ps1');
 const DEPLOY_LOG = path.join(__dirname, '..', 'scripts', 'deploy.log');
 
 function isValidSignature(secret, body, signatureHeader) {
@@ -26,8 +29,7 @@ function isValidSignature(secret, body, signatureHeader) {
 // on the child's 'error' event — with no listener, Node treats that as an uncaught
 // exception and crashes this whole process. Log it instead.
 function spawnDetached(args) {
-  const log = fs.openSync(DEPLOY_LOG, 'a');
-  spawn('powershell.exe', args, { detached: true, stdio: ['ignore', log, log], windowsHide: true })
+  spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true })
     .on('error', (err) => console.error('Failed to spawn powershell.exe:', err.message))
     .unref();
 }
@@ -48,7 +50,12 @@ function pm2Command(action, name) {
   if (!PM2_ACTIONS.has(action)) throw new Error(`Invalid pm2 action: ${action}`);
   if (!SAFE_NAME.test(name)) throw new Error(`Invalid pm2 process name: ${name}`);
 
-  spawnDetached(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `pm2 ${action} ${name}`]);
+  // Redirecting pm2's output here isn't just for the log — it's what stops
+  // this command from popping a console window, same as Invoke-Logged in
+  // auto-deploy.ps1: this powershell.exe has no console of its own (spawned
+  // hidden below), so an un-redirected `pm2 restart` would make Windows
+  // allocate a new, briefly visible one to print to.
+  spawnDetached(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `pm2 ${action} ${name} *>> '${DEPLOY_LOG}'`]);
 }
 
 // Just a process restart (e.g. after an admin-panel .env edit) — skips

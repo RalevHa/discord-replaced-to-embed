@@ -10,6 +10,12 @@ Set-Location (Join-Path $PSScriptRoot '..')
 # rather than trusting `git pull`'s implicit "current branch's upstream".
 $Branch = if ($env:DEPLOY_BRANCH) { $env:DEPLOY_BRANCH } else { 'main' }
 
+$LogFile = Join-Path $PSScriptRoot 'deploy.log'
+
+function Write-Log([string]$message) {
+    Add-Content -Path $LogFile -Value "$(Get-Date -Format u) $message"
+}
+
 # $ErrorActionPreference only governs PowerShell's own errors, not exit codes from
 # external commands (git/npm/pm2) — without this check a failed `git pull` would
 # silently fall through to `pm2 restart`, restarting the OLD code and logging
@@ -18,6 +24,17 @@ function Assert-Success([string]$step) {
     if ($LASTEXITCODE -ne 0) {
         throw "$step failed with exit code $LASTEXITCODE"
     }
+}
+
+# Runs a native command with its output appended to deploy.log instead of
+# printed to the console. This is also what stops the command from popping a
+# visible console window: this script is normally launched with no console of
+# its own (spawned hidden by the deploy webhook), and an un-redirected child
+# would otherwise make Windows allocate — and briefly show — a brand new one
+# just to have somewhere to print to.
+function Invoke-Logged([string]$Exe, [string[]]$ExeArgs) {
+    Write-Log "> $Exe $($ExeArgs -join ' ')"
+    & $Exe @ExeArgs *>> $LogFile
 }
 
 # The webhook fires this script detached, once per push delivery, with no
@@ -29,35 +46,35 @@ $LockFile = Join-Path $PSScriptRoot 'deploy.lock'
 if (Test-Path $LockFile) {
     $age = (Get-Date) - (Get-Item $LockFile).LastWriteTime
     if ($age.TotalMinutes -lt 10) {
-        Write-Output "$(Get-Date -Format u) Deploy already in progress, skipping this run."
+        Write-Log 'Deploy already in progress, skipping this run.'
         exit 0
     }
-    Write-Output "$(Get-Date -Format u) Stale lock file (age $([int]$age.TotalMinutes)m), reclaiming."
+    Write-Log "Stale lock file (age $([int]$age.TotalMinutes)m), reclaiming."
 }
 New-Item -ItemType File -Path $LockFile -Force | Out-Null
 
 try {
-    git fetch origin
+    Invoke-Logged git @('fetch', 'origin')
     Assert-Success 'git fetch'
-    git checkout $Branch
+    Invoke-Logged git @('checkout', $Branch)
     Assert-Success "git checkout $Branch"
 
     $local = git rev-parse HEAD
     $remote = git rev-parse "origin/$Branch"
 
     if ($local -ne $remote) {
-        Write-Output "$(Get-Date -Format u) New commits found ($local -> $remote), deploying..."
-        git pull origin $Branch
+        Write-Log "New commits found ($local -> $remote), deploying..."
+        Invoke-Logged git @('pull', 'origin', $Branch)
         Assert-Success 'git pull'
-        npm install
+        Invoke-Logged npm @('install')
         Assert-Success 'npm install'
-        npm run build:admin
+        Invoke-Logged npm @('run', 'build:admin')
         Assert-Success 'build:admin'
-        pm2 restart discord-bot
+        Invoke-Logged pm2 @('restart', 'discord-bot')
         Assert-Success 'pm2 restart'
-        Write-Output "$(Get-Date -Format u) Deploy complete."
+        Write-Log 'Deploy complete.'
     } else {
-        Write-Output "$(Get-Date -Format u) Up to date."
+        Write-Log 'Up to date.'
     }
 } finally {
     Remove-Item $LockFile -Force -ErrorAction SilentlyContinue
