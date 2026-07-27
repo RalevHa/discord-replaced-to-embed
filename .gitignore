@@ -1,4 +1,5 @@
 node_modules/
 .env
 *.log
-้นadmin-panel/dist/
+scripts/deploy.lock
+admin-panel/dist/
