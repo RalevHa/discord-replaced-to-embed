@@ -138,7 +138,11 @@ function createAdminApp(ctx) {
   authed.get('/pm2/status', async (req, res) => {
     try {
       const s = await pm2Control.status(config.pm2ProcessName);
-      res.json(s || { managed: false });
+      // summarize()'s output has no `managed` field of its own (it's tested as a
+      // pure describe()-entry mapper) — the frontend's Pm2Panel keys its whole
+      // "not running under pm2" fallback off status.managed, so a successful
+      // lookup has to be tagged here or it reads as unmanaged too.
+      res.json(s ? { ...s, managed: true } : { managed: false });
     } catch (err) {
       res.json({ managed: false, error: err.message });
     }
