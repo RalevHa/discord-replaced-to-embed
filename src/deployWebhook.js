@@ -28,8 +28,19 @@ function isValidSignature(secret, body, signatureHeader) {
 // A spawn error (e.g. `powershell.exe` missing from PATH) is emitted asynchronously
 // on the child's 'error' event — with no listener, Node treats that as an uncaught
 // exception and crashes this whole process. Log it instead.
+//
+// NOT `detached: true`: on this Node/Windows combo, spawning with detached:true
+// silently no-ops — the child process object comes back with no error event and
+// (when observable) exit code 0, but the command never actually runs (verified
+// with a minimal repro: a bare `Write-Output ... | Out-File` never wrote its
+// file with detached:true, every time, and always did without it). That made
+// every action that goes through here — deploy, restart, stop, start — a no-op
+// with no visible failure. Losing OS-level detachment means a child could in
+// theory get killed alongside this process's own tree if something else tears
+// it down mid-command, but an actually-running command beats a silently
+// no-op'd "safe" one.
 function spawnDetached(args) {
-  spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true })
+  spawn('powershell.exe', args, { stdio: 'ignore', windowsHide: true })
     .on('error', (err) => console.error('Failed to spawn powershell.exe:', err.message))
     .unref();
 }
