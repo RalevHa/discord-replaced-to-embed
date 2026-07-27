@@ -11,6 +11,7 @@ const KEYS = {
   byLabel: 'stats:by_label', // hash: label -> count
   since: 'stats:since', // ms timestamp, set once
   spamCaught: 'stats:spam_caught', // integer counter of flood incidents handled
+  rollChannels: 'roll_channels', // hash: guild ID -> JSON array of allowed channel IDs
 };
 
 /**
@@ -28,6 +29,8 @@ function createStorage(config) {
 
   // In-memory cache of disabled guilds (always used for fast reads).
   const disabledGuilds = new Set();
+  // In-memory cache of allowed /roll channels: guild ID -> Set of channel IDs.
+  const rollChannelsByGuild = new Map();
   // In-memory stats — the source of truth only when Redis is absent.
   const mem = { startedAt: Date.now(), total: 0, byLabel: {}, spamCaught: 0 };
 
@@ -41,6 +44,12 @@ function createStorage(config) {
       try {
         const members = await redis.smembers(KEYS.disabled);
         for (const id of members) disabledGuilds.add(id);
+
+        const rollChannels = await redis.hgetall(KEYS.rollChannels);
+        for (const [guildId, json] of Object.entries(rollChannels || {})) {
+          rollChannelsByGuild.set(guildId, new Set(JSON.parse(json)));
+        }
+
         // Stamp the tracking-start time once (first ever boot).
         await redis.set(KEYS.since, Date.now(), { nx: true });
         console.log(`Loaded ${disabledGuilds.size} disabled guild(s) from Redis.`);
@@ -61,6 +70,38 @@ function createStorage(config) {
       if (!redis) return;
       if (disabled) await redis.sadd(KEYS.disabled, id);
       else await redis.srem(KEYS.disabled, id);
+    },
+
+    /** Synchronous, cache-backed — safe to call on every /roll. */
+    isRollChannelAllowed(guildId, channelId) {
+      return Boolean(rollChannelsByGuild.get(guildId)?.has(channelId));
+    },
+
+    /** Channel IDs currently allowed to roll in, for a guild (for /roll-channel list). */
+    getRollChannels(guildId) {
+      return [...(rollChannelsByGuild.get(guildId) || [])];
+    },
+
+    /** Add a channel to a guild's roll allowlist and persist it. */
+    async addRollChannel(guildId, channelId) {
+      let set = rollChannelsByGuild.get(guildId);
+      if (!set) {
+        set = new Set();
+        rollChannelsByGuild.set(guildId, set);
+      }
+      set.add(channelId);
+      if (!redis) return;
+      await redis.hset(KEYS.rollChannels, { [guildId]: JSON.stringify([...set]) });
+    },
+
+    /** Remove a channel from a guild's roll allowlist and persist it. */
+    async removeRollChannel(guildId, channelId) {
+      const set = rollChannelsByGuild.get(guildId);
+      if (!set) return;
+      set.delete(channelId);
+      if (!redis) return;
+      if (set.size) await redis.hset(KEYS.rollChannels, { [guildId]: JSON.stringify([...set]) });
+      else await redis.hdel(KEYS.rollChannels, guildId);
     },
 
     /**
