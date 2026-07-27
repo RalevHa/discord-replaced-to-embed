@@ -22,13 +22,47 @@ function isValidSignature(secret, body, signatureHeader) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function triggerDeploy() {
+// A spawn error (e.g. `powershell.exe` missing from PATH) is emitted asynchronously
+// on the child's 'error' event — with no listener, Node treats that as an uncaught
+// exception and crashes this whole process. Log it instead.
+function spawnDetached(args) {
   const log = fs.openSync(DEPLOY_LOG, 'a');
-  spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', DEPLOY_SCRIPT], {
-    detached: true,
-    stdio: ['ignore', log, log],
-    windowsHide: true,
-  }).unref();
+  spawn('powershell.exe', args, { detached: true, stdio: ['ignore', log, log], windowsHide: true })
+    .on('error', (err) => console.error('Failed to spawn powershell.exe:', err.message))
+    .unref();
+}
+
+function triggerDeploy() {
+  spawnDetached(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', DEPLOY_SCRIPT]);
+}
+
+// Run a pm2 lifecycle command as a DETACHED subprocess, not the `pm2` JS API
+// in-process — the admin panel calls this to restart/stop/start THIS very
+// process, and an in-process call could get killed mid-request before the
+// HTTP response flushes. A detached child survives that; see pm2Control.js
+// for read-only status/log queries, which don't have this problem.
+const PM2_ACTIONS = new Set(['start', 'stop', 'restart']);
+const SAFE_NAME = /^[\w-]+$/;
+
+function pm2Command(action, name) {
+  if (!PM2_ACTIONS.has(action)) throw new Error(`Invalid pm2 action: ${action}`);
+  if (!SAFE_NAME.test(name)) throw new Error(`Invalid pm2 process name: ${name}`);
+
+  spawnDetached(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `pm2 ${action} ${name}`]);
+}
+
+// Just a process restart (e.g. after an admin-panel .env edit) — skips
+// auto-deploy.ps1's git fetch/pull/npm install, since no code changed.
+function restartProcess(name) {
+  pm2Command('restart', name);
+}
+
+function stopProcess(name) {
+  pm2Command('stop', name);
+}
+
+function startProcess(name) {
+  pm2Command('start', name);
 }
 
 /** Node http handler for POST /deploy-webhook. */
@@ -72,4 +106,4 @@ function handleDeployWebhook(req, res, config) {
   });
 }
 
-module.exports = { handleDeployWebhook, isValidSignature };
+module.exports = { handleDeployWebhook, isValidSignature, triggerDeploy, restartProcess, stopProcess, startProcess };

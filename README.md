@@ -169,6 +169,9 @@ npm start
 | `MOD_LOG_CHANNEL_ID` | — | Channel ID for moderation alerts. Empty = console only. |
 | `SPAM_TRUSTED_ROLE_IDS` | — | Comma-separated role IDs exempt from spam detection. |
 | `SPAM_IGNORED_CHANNEL_IDS` | — | Comma-separated channel IDs to skip. |
+| `ADMIN_PASSWORD` | — | Enables the [admin panel](#admin-panel) at `/admin`. Empty = panel disabled (404s). |
+| `SESSION_SECRET` | — | Signs the admin panel's session cookie. Required whenever `ADMIN_PASSWORD` is set. |
+| `PM2_PROCESS_NAME` | — | Name pm2 knows this process by, for the admin panel's process controls. Defaults to `discord-bot` (matches `scripts/auto-deploy.ps1`). |
 
 To get a server ID, enable **Developer Mode** (User Settings → Advanced), then right-click
 the server → **Copy Server ID**:
@@ -190,6 +193,36 @@ serverless tier, HTTP-based):
 1. Create a free database at [console.upstash.com](https://console.upstash.com) → **Create Database** (Redis).
 2. Copy the **REST API** `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 3. Add both as env vars (locally in `.env`, or in the Render dashboard).
+
+## Admin panel
+
+A password-protected web panel at `/admin` for managing the bot without touching
+Discord or the host machine directly: per-guild enable/disable and roll-channel
+management (the same things `/toggle` and `/roll-channel` do), a `.env` editor, a
+manual deploy trigger with a live deploy log, and pm2 process controls (status,
+memory/CPU, restart count, Start/Stop/Restart, log tail). Built with React
+(frontend) and Express (backend, mounted alongside the existing health-check
+server).
+
+**Setup:**
+
+1. Set `ADMIN_PASSWORD` and `SESSION_SECRET` in `.env` (see `.env.example`) — the
+   panel 404s entirely until both are set.
+2. Build the frontend once (and again after pulling changes to `admin-panel/`):
+   ```bash
+   npm run build:admin
+   ```
+3. Start the bot as usual (`npm start`) and visit `http://<host>:<PORT>/admin`.
+
+**Notes:**
+
+- The login endpoint locks out an IP for 15 minutes after 5 failed attempts.
+- Saving `.env` changes writes the file, then restarts the bot (`pm2 restart
+  discord-bot`) so the new values take effect immediately — this only makes sense
+  under the self-hosted setup below (Option B), since Render's env vars live in its
+  own dashboard, not a checked-in `.env` file, and its filesystem is ephemeral anyway.
+- `scripts/auto-deploy.ps1` rebuilds the admin panel (`npm run build:admin`) on every
+  deploy, so a fresh `git pull` on the server doesn't leave `/admin` serving stale UI.
 
 ## Deployment
 

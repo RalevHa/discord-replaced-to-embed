@@ -17,6 +17,8 @@ const messageUpdate = require('./events/messageUpdate');
 const messageDelete = require('./events/messageDelete');
 const facebookProxy = require('./facebookProxy');
 const deployWebhook = require('./deployWebhook');
+const dashboard = require('./dashboard');
+const adminApi = require('./adminApi');
 
 const FB_PROXY_PATH = /^\/fb\/([^/?]+)/;
 
@@ -42,9 +44,16 @@ async function registerCommands(client, allowedGuilds) {
 // HTTP server so Render/UptimeRobot has a port to ping, and (at /fb/<encoded>)
 // so Discord's own link-unfurler can fetch a playable-video card for Facebook
 // Reels — see facebookProxy.js for why a bot-sent embed can't do that itself.
-function startHealthServer(port) {
+function startHealthServer(port, ctx) {
+  const adminApp = adminApi.createAdminApp(ctx);
+
   http
     .createServer((req, res) => {
+      if ((req.url || '').startsWith('/admin')) {
+        adminApp(req, res);
+        return;
+      }
+
       const match = FB_PROXY_PATH.exec(req.url || '');
       if (match) {
         facebookProxy.handleProxyRequest(res, match[1], req.headers['user-agent']).catch((err) => {
@@ -59,7 +68,25 @@ function startHealthServer(port) {
         return;
       }
 
-      const page = STATIC_PAGES[(req.url || '').split('?')[0]];
+      const url = (req.url || '').split('?')[0];
+      if (url === '/status' || url === '/status.json') {
+        dashboard
+          .buildStatus(ctx)
+          .then((status) => {
+            if (url === '/status.json') {
+              res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(status));
+            } else {
+              res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(dashboard.renderHtml(status));
+            }
+          })
+          .catch((err) => {
+            console.error('Status dashboard error:', err);
+            if (!res.headersSent) res.writeHead(500).end('error');
+          });
+        return;
+      }
+
+      const page = STATIC_PAGES[url];
       if (page) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(page);
         return;
@@ -108,7 +135,7 @@ function start() {
   client.on('messageDelete', (message) => messageDelete(message, ctx));
 
   client.login(config.token);
-  startHealthServer(config.port);
+  startHealthServer(config.port, ctx);
 }
 
 module.exports = { start };

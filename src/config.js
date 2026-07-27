@@ -54,4 +54,14 @@ module.exports = Object.freeze({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
   },
+
+  // Admin web panel (see src/adminApi.js), served at /admin. Empty password =
+  // panel disabled entirely (404s), same "absent secret = feature off" pattern
+  // as deployWebhookSecret above.
+  adminPassword: (process.env.ADMIN_PASSWORD || '').trim(),
+  // Signs the admin panel's session cookie. Required whenever adminPassword is set.
+  sessionSecret: (process.env.SESSION_SECRET || '').trim(),
+  // Name pm2 knows this process by (see scripts/auto-deploy.ps1's `pm2 restart`).
+  // One place for it since the admin panel's process controls need it too.
+  pm2ProcessName: (process.env.PM2_PROCESS_NAME || 'discord-bot').trim(),
 });

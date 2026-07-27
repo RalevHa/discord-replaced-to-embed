@@ -34,6 +34,8 @@ if ($local -ne $remote) {
     Assert-Success 'git pull'
     npm install
     Assert-Success 'npm install'
+    npm run build:admin
+    Assert-Success 'build:admin'
     pm2 restart discord-bot
     Assert-Success 'pm2 restart'
     Write-Output "$(Get-Date -Format u) Deploy complete."
