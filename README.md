@@ -110,6 +110,8 @@ otherwise globally, which can take up to ~1h to appear).
 | `/stats` | everyone | Conversions counted (all-time with Upstash, else since last restart). |
 | `/ping` | everyone | Bot round-trip + WebSocket latency. |
 | `/toggle` | Manage Server | Enable/disable automatic conversion in the current server. |
+| `/roll <dice>` | everyone (allowed channels only) | Roll dice, e.g. `1d100` or `2d6+3`. Disabled everywhere until an admin allows a channel. |
+| `/roll-channel add\|remove\|list` | Manage Server | Manage which channels `/roll` is allowed in. |
 | `/help` | everyone | What the bot does and the command list. |
 
 ## Setup
@@ -135,21 +137,26 @@ Open the generated URL to invite the bot to your server.
 
 ### 3. Install and run
 
+One process, one command — `npm start` runs the Discord bot **and** its HTTP server
+(health check, and the [admin panel](#admin-panel) at `/admin` if enabled) together.
+There's nothing separate to start for the web side.
+
 ```bash
 npm install
-
-# Provide your token (see Configuration below for all options)
-export DISCORD_BOT_TOKEN=your_token_here
-
+cp .env.example .env   # then edit .env and add your token (see Configuration below)
 npm start
 ```
 
-Or load variables from a `.env` file — `npm start` already runs with `--env-file=.env`:
+`npm start` already runs with `--env-file=.env`, so that's all you need for the bot
+itself. If you're also enabling the [admin panel](#admin-panel) (`ADMIN_PASSWORD` +
+`SESSION_SECRET` in `.env`), build its frontend once first:
 
 ```bash
-cp .env.example .env   # then edit .env and add your token
-npm start
+npm run build:admin
 ```
+
+Re-run `npm run build:admin` any time you pull changes to `admin-panel/`.
+`npm run dev` (watch mode) works the same way for local development.
 
 ## Configuration
 
@@ -204,15 +211,10 @@ memory/CPU, restart count, Start/Stop/Restart, log tail). Built with React
 (frontend) and Express (backend, mounted alongside the existing health-check
 server).
 
-**Setup:**
-
-1. Set `ADMIN_PASSWORD` and `SESSION_SECRET` in `.env` (see `.env.example`) — the
-   panel 404s entirely until both are set.
-2. Build the frontend once (and again after pulling changes to `admin-panel/`):
-   ```bash
-   npm run build:admin
-   ```
-3. Start the bot as usual (`npm start`) and visit `http://<host>:<PORT>/admin`.
+Enable it by setting `ADMIN_PASSWORD` and `SESSION_SECRET` in `.env` (see
+`.env.example`) — it 404s entirely until both are set. See [Install and
+run](#3-install-and-run) above for the one-time `npm run build:admin` step; then
+just visit `http://<host>:<PORT>/admin`.
 
 **Notes:**
 
