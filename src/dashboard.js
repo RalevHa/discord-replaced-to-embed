@@ -12,7 +12,10 @@ const DEPLOY_LOG = path.join(__dirname, '..', 'scripts', 'deploy.log');
 // Best-effort — `git` may be missing (e.g. a bare deploy of the source tree).
 function getGitInfo() {
   const repoRoot = path.join(__dirname, '..');
-  const git = (args) => execSync(`git ${args}`, { cwd: repoRoot, encoding: 'utf8' }).trim();
+  // windowsHide: execSync shells out via cmd.exe on Windows, which pops a visible
+  // console window per call unless told not to — and /status's 15s auto-refresh
+  // means this runs (4 times over) every 15 seconds for as long as the page is open.
+  const git = (args) => execSync(`git ${args}`, { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
   try {
     return {
       commit: git('rev-parse --short HEAD'),
