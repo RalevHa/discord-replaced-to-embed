@@ -45,9 +45,20 @@ function createStorage(config) {
         const members = await redis.smembers(KEYS.disabled);
         for (const id of members) disabledGuilds.add(id);
 
+        // hgetall already JSON-decodes each hash value (the @upstash/redis client's
+        // automatic deserialization) — channelIds is already the array addRollChannel
+        // stored, not a JSON string to parse again. Re-parsing it here used to crash
+        // (Array.prototype.toString collapses it to a bare digit string, and
+        // JSON.parse of that yields a number, which isn't iterable) for every guild
+        // with any roll channels configured, aborting this whole init() before it
+        // even finished loading disabled guilds.
         const rollChannels = await redis.hgetall(KEYS.rollChannels);
-        for (const [guildId, json] of Object.entries(rollChannels || {})) {
-          rollChannelsByGuild.set(guildId, new Set(JSON.parse(json)));
+        for (const [guildId, channelIds] of Object.entries(rollChannels || {})) {
+          if (Array.isArray(channelIds)) {
+            rollChannelsByGuild.set(guildId, new Set(channelIds));
+          } else {
+            console.error(`Skipping malformed roll-channels entry for guild ${guildId}:`, channelIds);
+          }
         }
 
         // Stamp the tracking-start time once (first ever boot).
