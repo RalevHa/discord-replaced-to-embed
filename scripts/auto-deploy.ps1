@@ -82,6 +82,12 @@ try {
     } else {
         Write-Log 'Up to date.'
     }
+} catch {
+    # Without this, a thrown error (e.g. a flaky git fetch) unwinds the script silently —
+    # this runs fully detached with stdio ignored, so deploy.log just stops mid-run with
+    # no indication anything went wrong.
+    Write-Log "Deploy failed: $($_.Exception.Message)"
+    throw
 } finally {
     Remove-Item $LockFile -Force -ErrorAction SilentlyContinue
 }
