@@ -114,6 +114,26 @@ test('extractFacebookPost collects every og:image tag for a multi-photo post', a
   }
 });
 
+test('extractFacebookPost collects every photo from all_subattachments when og:image is only the cover photo', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Album post" />
+      <meta property="og:description" content="Caption" />
+      <meta property="og:image" content="https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1" />
+    </head></html>
+    <script>{"attachment":{"all_subattachments":{"count":2,"nodes":[{"media":{"image":{"uri":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=1"}}},{"media":{"image":{"uri":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=2"}}}]}}}</script>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.deepEqual(data.images, [
+      'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1',
+      'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=2',
+    ]);
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost captures the post date from the embedded story JSON', async () => {
   const restore = mockFetch(`
     <html><head>
@@ -168,7 +188,7 @@ test('extractFacebookPost falls back to browser_native_hd_url when no og:video t
       <meta property="og:title" content="A Reel" />
       <meta property="og:image" content="https://scontent.example/thumb.jpg" />
     </head>
-    <script>{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123","browser_native_sd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123&sd=1"}</script>
+    <script>{"story":{"creation_time":1600000000,"attachments":[{"media":{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123","browser_native_sd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123&sd=1"}}]}}</script>
     </html>
   `);
   try {
@@ -177,6 +197,23 @@ test('extractFacebookPost falls back to browser_native_hd_url when no og:video t
       data.video,
       'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=123'
     );
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost does not pick up a browser_native video URL from a comment on a text-only post', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Text only post" />
+      <meta property="og:description" content="Just words, no video" />
+    </head></html>
+    <script>{"story":{"creation_time":1600000000,"attachments":[]}}</script>
+    <script>{"comments":{"edges":[{"node":{"attachments":[{"media":{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=999"}}]}}]}}</script>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.video, null);
   } finally {
     restore();
   }
