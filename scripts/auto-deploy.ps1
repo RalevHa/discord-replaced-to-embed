@@ -10,6 +10,20 @@ Set-Location (Join-Path $PSScriptRoot '..')
 # rather than trusting `git pull`'s implicit "current branch's upstream".
 $Branch = if ($env:DEPLOY_BRANCH) { $env:DEPLOY_BRANCH } else { 'main' }
 
+# This runs fully detached with no console attached (see spawnDetached in
+# deployWebhook.js) — if git (or Git Credential Manager) ever needs to prompt for
+# something, a normal terminal would just wait for keyboard input, but here there's
+# nothing to answer it. Left unset, that's an invisible hang forever: no error, no
+# log line, no timeout. These make git fail loudly instead of prompting at all —
+# an expired/missing credential becomes a real error our catch block can log,
+# rather than a silent deploy that never completes.
+$env:GIT_TERMINAL_PROMPT = '0'
+$env:GCM_INTERACTIVE = 'never'
+# Same reasoning for a merge commit's editor prompt (only reachable if the branch
+# somehow diverged) — set once, locally to this repo, so it's guaranteed regardless
+# of whatever the server's own global git config happens to be.
+git config core.editor 'cmd /c exit 0' | Out-Null
+
 $LogFile = Join-Path $PSScriptRoot 'deploy.log'
 
 function Write-Log([string]$message) {
