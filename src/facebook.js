@@ -95,13 +95,46 @@ function looksLikeLoginWall(tags) {
   return LOGIN_WALL_MARKERS.some((marker) => text.includes(marker));
 }
 
+// Extracts the JSON object value for a `"key":{...}` occurrence, honoring quoted
+// strings/escapes so brace characters inside string values don't miscount. Returns
+// null if the key isn't found or the braces never balance.
+function extractJsonObject(html, keyPattern) {
+  const m = keyPattern.exec(html);
+  if (!m) return null;
+  const start = m.index + m[0].length - 1; // position of the opening "{"
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < html.length; i++) {
+    const ch = html[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return html.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 // Reels no longer expose an og:video meta tag — the page instead embeds this field
 // (JSON-escaped, e.g. `"browser_native_hd_url":"https:\/\/lookaside.fbsbx.com\/..."`)
 // pointing at a stable lookaside.fbsbx.com crawler-media URL that serves the actual
 // video/mp4 file directly (unlike the DASH CDN URLs elsewhere in the page, which are
 // split into separate video/audio streams and short-lived).
+// Scoped to the post's own "story" object (same node extractPostTimestamp reads) —
+// the page also embeds hydration JSON for other content, like preloaded comments,
+// and a matching field there would belong to a commenter's attached video, not the post's.
 function extractBrowserNativeVideoUrl(html) {
-  const m = /"browser_native_(?:hd|sd)_url":"([^"]+)"/.exec(html);
+  const story = extractJsonObject(html, /"story":\{/);
+  if (!story) return null;
+  const m = /"browser_native_(?:hd|sd)_url":"([^"]+)"/.exec(story);
   return m ? m[1].replace(/\\\//g, '/') : null;
 }
 
@@ -121,6 +154,21 @@ function decodeJsonEscapedString(escaped) {
   } catch {
     return escaped;
   }
+}
+
+// Multi-photo posts used to repeat the og:image tag once per photo (see parseOgTags),
+// but Facebook now only emits one — the cover photo. The full set still lives in the
+// page's album hydration JSON, e.g. `"all_subattachments":{"count":2,"nodes":[{"media":
+// {"image":{"uri":"..."}}},...]}`. Scoped to that object so an unrelated "image" field
+// elsewhere on the page (comments, sidebar) isn't picked up.
+function extractAlbumImages(html) {
+  const album = extractJsonObject(html, /"all_subattachments":\{/);
+  if (!album) return [];
+  const images = [];
+  const re = /"image":\{"uri":"((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(album))) images.push(decodeJsonEscapedString(m[1]));
+  return images;
 }
 
 // Some routes (e.g. /photo?fbid=...) render the Comet SPA shell with no server-side
@@ -165,8 +213,10 @@ async function extractFacebookPost(url) {
       const ogHasContent = tags['og:title'] || tags['og:description'] || images.length;
       const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
       if ((ogHasContent || fallback) && !looksLikeLoginWall(tags)) {
+        const albumImages = extractAlbumImages(html);
+        const imageList = albumImages.length ? albumImages : images;
         // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.
-        const allImages = images.length ? images.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
+        const allImages = imageList.length ? imageList.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
         data = {
           title: tags['og:title'] || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',
