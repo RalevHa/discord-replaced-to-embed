@@ -312,7 +312,7 @@ test('buildEmbed shows the post date fixed to UTC+7 in the footer, labeled as su
     url: 'https://facebook.com/x',
     timestamp: 1451861194000, // 2016-01-03T22:46:34Z -> 2016-01-04 05:46 in UTC+7
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook • Jan 4, 2016, 5:46 AM (UTC+7)');
+  assert.equal(embed.toJSON().footer.text, 'Facebook • Jan 4, 2016, 05:46 (UTC+7)');
 });
 
 test('buildEmbed footer is just the site name when no post date was found', () => {
