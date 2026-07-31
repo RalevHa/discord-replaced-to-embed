@@ -48,6 +48,15 @@ function Assert-Success([string]$step) {
 # just to have somewhere to print to.
 function Invoke-Logged([string]$Exe, [string[]]$ExeArgs) {
     Write-Log "> $Exe $($ExeArgs -join ' ')"
+    # git/npm/pm2 routinely write normal, non-error progress to stderr (git fetch's
+    # "From <url>" summary, "Already up to date.", download progress, ...). Under the
+    # script's global $ErrorActionPreference = 'Stop', merging that into the pipeline
+    # via 2>&1 turns every one of those routine lines into a terminating error —
+    # aborting a perfectly successful command. Scoped to this function only (plain
+    # assignment shadows the parent scope's value, doesn't overwrite it), so real
+    # failures elsewhere in the script still stop it; Assert-Success's $LASTEXITCODE
+    # check right after this call is what actually catches a real failure here.
+    $ErrorActionPreference = 'Continue'
     # Piped into Add-Content (not `*>> $LogFile`) so this lands in the same
     # encoding as Write-Log's own lines. The `*>>` redirection operator defaults
     # to UTF-16LE in Windows PowerShell 5.1, while Add-Content defaults to
