@@ -64,9 +64,14 @@ function uniquePostUrl(path = 'user/posts') {
 // extractFacebookPost hits the network, so these tests stub global.fetch. facebook.js
 // calls `fetch` at invocation time (not captured at require time), so overriding it
 // here takes effect immediately.
-function mockFetch(html, { ok = true } = {}) {
+function mockFetch(html, { ok = true, videoOk = true } = {}) {
   const original = global.fetch;
-  global.fetch = async () => ({ ok, text: async () => html });
+  global.fetch = async (url, opts) => {
+    if (opts && opts.method === 'HEAD') {
+      return { ok: videoOk, headers: { get: () => (videoOk ? 'video/mp4' : 'text/html') } };
+    }
+    return { ok, text: async () => html };
+  };
   return () => {
     global.fetch = original;
   };
@@ -197,6 +202,26 @@ test('extractFacebookPost falls back to browser_native_hd_url when no og:video t
       data.video,
       'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=123'
     );
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost discards a browser_native video URL that fails the HEAD verification', async () => {
+  const restore = mockFetch(
+    `
+    <html><head>
+      <meta property="og:type" content="video.other" />
+      <meta property="og:title" content="A Reel" />
+    </head>
+    <script>{"story":{"creation_time":1600000000,"attachments":[{"media":{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123"}}]}}</script>
+    </html>
+  `,
+    { videoOk: false }
+  );
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'));
+    assert.equal(data.video, null);
   } finally {
     restore();
   }
