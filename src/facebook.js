@@ -17,6 +17,7 @@ const FB_URL_PATTERN =
 
 const CACHE_TTL_MS = 15 * 60 * 1000; // absorbs re-shares of the same post without hammering Facebook
 const FETCH_TIMEOUT_MS = 8000;
+const VIDEO_VERIFY_TIMEOUT_MS = 4000;
 
 // Facebook serves a generic "log in to see this" page instead of real OG tags when it
 // doesn't like the request (rate limiting, geo, etc.). Treat that as extraction failure
@@ -148,6 +149,25 @@ function extractPostTimestamp(html) {
   return m ? Number(m[1]) * 1000 : null;
 }
 
+// Unlike an actual og:video: tag, the browser_native lookaside url is an
+// undocumented endpoint that serves the real .mp4 for some posts and a 500
+// error page for others, with nothing in the post's own metadata predicting
+// which — so probe it with a HEAD request (cheap: no body download) before
+// trusting it as playable, rather than finding out only when Discord's own
+// unfurler tries and fails.
+async function verifyVideoUrl(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' },
+      signal: AbortSignal.timeout(VIDEO_VERIFY_TIMEOUT_MS),
+    });
+    return response.ok && (response.headers.get('content-type') || '').startsWith('video/');
+  } catch {
+    return false;
+  }
+}
+
 function decodeJsonEscapedString(escaped) {
   try {
     return JSON.parse(`"${escaped}"`);
@@ -217,21 +237,21 @@ async function extractFacebookPost(url) {
         const imageList = albumImages.length ? albumImages : images;
         // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.
         const allImages = imageList.length ? imageList.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
+        // Reels/videos expose a direct (usually short-lived, signed) file URL here.
+        // Posted as plain text it lets Discord's own unfurler render a playable
+        // video, which a bot-built embed can't do (see buildEmbed below). Reels no
+        // longer set these og:video tags at all, so fall back to the browser_native
+        // lookaside URL embedded in the page (see extractBrowserNativeVideoUrl) —
+        // verified before use since that fallback isn't reliable (see verifyVideoUrl).
+        const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
+        const browserNativeVideo = taggedVideo ? null : extractBrowserNativeVideoUrl(html);
+        const video = taggedVideo || (browserNativeVideo && (await verifyVideoUrl(browserNativeVideo)) ? browserNativeVideo : null);
         data = {
           title: tags['og:title'] || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',
           image: allImages[0] || null,
           images: allImages,
-          // Reels/videos expose a direct (usually short-lived, signed) file URL here.
-          // Posted as plain text it lets Discord's own unfurler render a playable
-          // video, which a bot-built embed can't do (see buildEmbed below). Reels no
-          // longer set these og:video tags at all, so fall back to the browser_native
-          // lookaside URL embedded in the page (see extractBrowserNativeVideoUrl).
-          video:
-            tags['og:video:secure_url'] ||
-            tags['og:video:url'] ||
-            tags['og:video'] ||
-            extractBrowserNativeVideoUrl(html),
+          video,
           siteName: tags['og:site_name'] || 'Facebook',
           url: tags['og:url'] || key,
           timestamp: extractPostTimestamp(html),

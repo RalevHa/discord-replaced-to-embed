@@ -42,7 +42,8 @@ async function buildConversion(content, config) {
       // Reels/videos: post a link Discord's own unfurler will play inline — a
       // bot-built embed can't carry playable video. Prefer our own proxy (stable
       // Twitter Player Card, works even if Facebook's CDN url is signed/expiring);
-      // fall back to the raw CDN url when no proxy is configured.
+      // fall back to the raw CDN url when no proxy is configured. facebook.js
+      // already verified data.video actually serves video before setting it.
       if (data.video) {
         facebookVideoLinks.push(
           config.facebookProxyBaseUrl
