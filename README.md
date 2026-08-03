@@ -34,8 +34,6 @@ single rule per platform covers every link form.
 | Pixiv | `https://(sub.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
 | Bluesky | `https://(sub.)bsky.app/PATH` | `https://bskx.app/PATH` |
 | Instagram | `https://(sub.)instagram.com/PATH` | `https://kkinstagram.com/PATH` |
-| YouTube | `https://(sub.)youtube.com/PATH` | `https://koutube.com/PATH` |
-| YouTube (short link) | `https://youtu.be/PATH` | `https://koutu.be/PATH` |
 
 > These embed services are community-run and occasionally rename or go down. If a platform
 > stops embedding, just swap the new host in its rule — see [Adding a platform](#adding-a-platform).
