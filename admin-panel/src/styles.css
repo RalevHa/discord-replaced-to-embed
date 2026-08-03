@@ -1,12 +1,50 @@
 :root {
   color-scheme: light dark;
+
+  --bg: #f4f5f7;
+  --bg-elevated: #ffffff;
+  --text: #1a1d23;
+  --text-dim: #6b7280;
+  --border: #e5e7eb;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: rgba(79, 70, 229, 0.1);
+  --up: #16a34a;
+  --down: #dc2626;
+  --error: #dc2626;
+  --error-soft: rgba(220, 38, 38, 0.08);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14151a;
+    --bg-elevated: #1c1e26;
+    --text: #e6e7eb;
+    --text-dim: #8b8f9a;
+    --border: #2b2d36;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, 0.14);
+    --up: #4ade80;
+    --down: #f87171;
+    --error: #f87171;
+    --error-soft: rgba(248, 113, 113, 0.1);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
-  color: #222;
-  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -19,18 +57,36 @@ a {
 }
 
 .error {
-  color: #e74c3c;
+  color: var(--error);
+  background: var(--error-soft);
+  border-radius: var(--radius);
+  padding: 0.6em 0.9em;
 }
 
 .card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.card h2,
+.card h3 {
+  margin-top: 0;
+}
+
+.card h3 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin-bottom: 0.75rem;
 }
 
 .dim {
-  color: #888;
+  color: var(--text-dim);
   font-size: 0.85em;
 }
 
@@ -39,21 +95,26 @@ a {
   width: 0.6em;
   height: 0.6em;
   border-radius: 50%;
-  margin-right: 0.4em;
+  margin-right: 0.5em;
+  box-shadow: 0 0 0 3px transparent;
 }
 .dot.up {
-  background: #2ecc71;
+  background: var(--up);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 20%, transparent);
 }
 .dot.down {
-  background: #e74c3c;
+  background: var(--down);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--down) 20%, transparent);
 }
 
 pre {
-  background: #f6f6f6;
-  padding: 0.75em;
-  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 0.85em 1em;
+  border-radius: 8px;
   overflow-x: auto;
   font-size: 0.85em;
+  line-height: 1.5;
 }
 
 table {
@@ -64,33 +125,73 @@ table {
 th,
 td {
   text-align: left;
-  padding: 0.4em 0.6em;
-  border-bottom: 1px solid #eee;
+  padding: 0.6em 0.7em;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--text-dim);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+tbody tr:hover {
+  background: var(--accent-soft);
 }
 
 button {
   cursor: pointer;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #f6f6f6;
-  padding: 0.35em 0.8em;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 0.45em 1em;
+  font-size: 0.9em;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 
-input {
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 0.35em 0.6em;
+button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button[type='submit']:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+input,
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45em 0.7em;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.9em;
+}
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .link-button {
   border: none;
   background: none;
   padding: 0;
-  color: #666;
+  color: var(--text-dim);
   text-decoration: underline;
   align-self: flex-start;
 }
@@ -104,23 +205,42 @@ input {
 .app {
   max-width: 900px;
   margin: 0 auto;
+  min-height: 100vh;
 }
 
 nav {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #ddd;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.92em;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+nav a:hover {
+  color: var(--text);
 }
 
 nav .brand {
-  font-weight: bold;
+  font-weight: 700;
   margin-right: auto;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 main {
-  padding: 1.25rem;
+  padding: 1.5rem;
 }
 
 .stack > * + * {
@@ -132,6 +252,7 @@ main {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  background: var(--bg);
 }
 
 .login-card {
@@ -144,31 +265,4 @@ main {
 .login-card h1 {
   font-size: 1.2rem;
   margin: 0 0 0.5rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    color: #ddd;
-    background: #1a1a1a;
-  }
-  .card,
-  nav {
-    border-color: #444;
-  }
-  .dim {
-    color: #999;
-  }
-  pre {
-    background: #262626;
-  }
-  th,
-  td {
-    border-color: #333;
-  }
-  button,
-  input {
-    background: #262626;
-    color: #ddd;
-    border-color: #444;
-  }
 }
