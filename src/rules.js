@@ -9,6 +9,8 @@ const RULES = [
   ['Pixiv',             'pixiv.net',     'www.phixiv.net'],
   ['Bluesky',           'bsky.app',      'bskx.app'],
   ['Instagram',         'instagram.com', 'kkinstagram.com'],
+  ['YouTube',           'youtube.com',   'koutube.com'],
+  ['YouTube',           'youtu.be',      'koutu.be'],
 ];
 
 // Facebook is NOT handled here — there's no reliable "fixup" host to redirect to,

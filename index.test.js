@@ -26,6 +26,12 @@ const cases = [
                 'https://www.phixiv.net/en/artworks/123', ['Pixiv']],
   ['bluesky',   'https://bsky.app/profile/user/post/abc',
                 'https://bskx.app/profile/user/post/abc', ['Bluesky']],
+  ['youtube',   'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                'https://koutube.com/watch?v=dQw4w9WgXcQ', ['YouTube']],
+  ['youtube shorts', 'https://youtube.com/shorts/abc123',
+                'https://koutube.com/shorts/abc123', ['YouTube']],
+  ['youtu.be short', 'https://youtu.be/dQw4w9WgXcQ',
+                'https://koutu.be/dQw4w9WgXcQ', ['YouTube']],
 
   // --- must NOT match ---
   ['lookalike domain', 'no nottiktok.com/should/not/match here',
