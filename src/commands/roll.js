@@ -35,7 +35,7 @@ module.exports = {
       return;
     }
 
-    const { rolls, total } = rollDice(spec);
+    const { rolls, total } = await rollDice(spec);
     const modifierPart = spec.modifier ? ` ${spec.modifier > 0 ? '+' : '-'} ${Math.abs(spec.modifier)}` : '';
     await interaction.reply(`🎲 **${input}** → [${rolls.join(', ')}]${modifierPart} = **${total}**`);
   },
