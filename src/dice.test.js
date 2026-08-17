@@ -28,9 +28,9 @@ test('rejects counts/sides over the caps', () => {
   assert.equal(parseDice('0d6'), null);
 });
 
-test('rollDice returns rolls within [1, sides] and a matching total', () => {
+test('rollDice returns rolls within [1, sides] and a matching total', async () => {
   const spec = { count: 5, sides: 6, modifier: 3 };
-  const { rolls, total } = rollDice(spec);
+  const { rolls, total } = await rollDice(spec);
   assert.equal(rolls.length, 5);
   for (const r of rolls) assert.ok(r >= 1 && r <= 6);
   assert.equal(total, rolls.reduce((a, b) => a + b, 0) + 3);
