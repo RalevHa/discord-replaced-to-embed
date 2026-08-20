@@ -196,6 +196,19 @@ function extractEngagementCounts(html) {
     );
   if (anon) return { reactions: Number(anon[2]), comments: Number(anon[1]), shares: null };
 
+  // /photo?fbid= permalink pages use a third anonymous shape: reaction_count, share_count
+  // and comment_rendering_instance are all present (unlike the plain anon fragment above,
+  // which never exposes shares) but spread further apart, tied together by the feedback id
+  // closing the reaction_count block and reappearing before comment_rendering_instance —
+  // matched via backreference so a different post's numbers elsewhere on the page can't
+  // be picked up instead.
+  const photoPage =
+    /"reaction_count":\{"count":(\d+)\}[\s\S]{0,500}?"id":"(ZmVlZGJhY2s6[^"]+)"\}[\s\S]{0,100}?"i18n_share_count":"\d+","share_count":\{"count":(\d+)[\s\S]{0,300}?"id":"\2"[\s\S]{0,100}?"comment_rendering_instance":\{"comments":\{"total_count":(\d+)\}\}/.exec(
+      html
+    );
+  if (photoPage)
+    return { reactions: Number(photoPage[1]), comments: Number(photoPage[4]), shares: Number(photoPage[3]) };
+
   return { reactions: null, comments: null, shares: null };
 }
 
