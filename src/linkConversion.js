@@ -37,7 +37,9 @@ async function buildConversion(content, config) {
       continue;
     }
 
-    const data = await facebook.extractFacebookPost(url);
+    const data = await facebook.extractFacebookPost(url, {
+      skipVideoVerification: config.facebookTrustUnverifiedVideo,
+    });
     if (data) {
       // Reels/videos: post a link Discord's own unfurler will play inline — a
       // bot-built embed can't carry playable video. Prefer our own proxy (stable

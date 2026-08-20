@@ -28,6 +28,12 @@ module.exports = Object.freeze({
   // fall back to posting the raw (often short-lived) Facebook CDN video URL.
   facebookProxyBaseUrl: (process.env.FACEBOOK_PROXY_BASE_URL || '').trim().replace(/\/$/, ''),
 
+  // Facebook's own lookaside video endpoint 500s for some Reels/videos (Facebook-side,
+  // not fixable here) — by default those are verified and skipped in favor of an
+  // image-only embed rather than posting a link Discord can't actually play. Set to
+  // "true" to post the video link unverified anyway; it'll sometimes be a dead player.
+  facebookTrustUnverifiedVideo: process.env.FACEBOOK_TRUST_UNVERIFIED_VIDEO === 'true',
+
   // --- Cross-channel spam (hijacked-account) detection ---
   // When one member posts the same text across spamChannelThreshold+ channels within
   // spamWindow seconds, the bot deletes those messages and times the member out.
