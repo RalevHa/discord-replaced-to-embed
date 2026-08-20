@@ -356,7 +356,7 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
 // which would show a different clock time to every reader — not what "UTC+7" means.
 // Format it once, fixed to Bangkok time, and label it explicitly instead.
 function formatUtc7(ms) {
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Bangkok',
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -364,12 +364,28 @@ function formatUtc7(ms) {
   }).format(ms);
 }
 
+// Matches Facebook's own og:title abbreviation style (e.g. "20K") closely enough for
+// a compact footer line — one decimal place, trimmed when it'd just be ".0".
+function humanFormat(n) {
+  if (n < 1000) return String(n);
+  const [unit, suffix] = n < 1_000_000 ? [1000, 'K'] : [1_000_000, 'M'];
+  return `${(n / unit).toFixed(1).replace(/\.0$/, '')}${suffix}`;
+}
+
 /** Build Discord embed(s) from extracted post data. Extra photos (beyond the
  * first) ride along as bare image-only embeds sharing the same URL — Discord
  * groups same-URL embeds into one gallery grid, up to 4 images. */
 function buildEmbed(data) {
   const siteName = data.siteName || 'Facebook';
-  const footerText = data.timestamp ? `${siteName} • ${formatUtc7(data.timestamp)} (UTC+7)` : siteName;
+  const dateLine = data.timestamp ? `${siteName} • ${formatUtc7(data.timestamp)} (UTC+7)` : siteName;
+
+  // Shares are only ever available when FACEBOOK_COOKIE is set (see
+  // extractEngagementCounts) — reactions/comments show either way.
+  const engagementParts = [];
+  if (data.reactions != null) engagementParts.push(`❤️ ${humanFormat(data.reactions)}`);
+  if (data.comments != null) engagementParts.push(`💬 ${humanFormat(data.comments)}`);
+  if (data.shares != null) engagementParts.push(`🔁 ${humanFormat(data.shares)}`);
+  const footerText = engagementParts.length ? `${dateLine}\n${engagementParts.join(' • ')}` : dateLine;
 
   const embed = new EmbedBuilder()
     .setColor(0x1877f2) // Facebook blue
@@ -378,14 +394,6 @@ function buildEmbed(data) {
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
-
-  // Shares are only ever available when FACEBOOK_COOKIE is set (see
-  // extractEngagementCounts) — reactions/comments show either way.
-  const fields = [];
-  if (data.reactions != null) fields.push({ name: 'Reactions', value: data.reactions.toLocaleString(), inline: true });
-  if (data.comments != null) fields.push({ name: 'Comments', value: data.comments.toLocaleString(), inline: true });
-  if (data.shares != null) fields.push({ name: 'Shares', value: data.shares.toLocaleString(), inline: true });
-  if (fields.length) embed.addFields(fields);
 
   const images = data.images && data.images.length ? data.images : data.image ? [data.image] : [];
   if (images[0]) embed.setImage(images[0]);
