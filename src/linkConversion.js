@@ -39,6 +39,7 @@ async function buildConversion(content, config) {
 
     const data = await facebook.extractFacebookPost(url, {
       skipVideoVerification: config.facebookTrustUnverifiedVideo,
+      cookie: config.facebookCookie,
     });
     if (data) {
       // Reels/videos: post a link Discord's own unfurler will play inline — a

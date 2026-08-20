@@ -64,12 +64,13 @@ function uniquePostUrl(path = 'user/posts') {
 // extractFacebookPost hits the network, so these tests stub global.fetch. facebook.js
 // calls `fetch` at invocation time (not captured at require time), so overriding it
 // here takes effect immediately.
-function mockFetch(html, { ok = true, videoOk = true } = {}) {
+function mockFetch(html, { ok = true, videoOk = true, captureHeaders } = {}) {
   const original = global.fetch;
   global.fetch = async (url, opts) => {
     if (opts && opts.method === 'HEAD') {
       return { ok: videoOk, headers: { get: () => (videoOk ? 'video/mp4' : 'text/html') } };
     }
+    if (captureHeaders) captureHeaders(opts.headers);
     return { ok, text: async () => html };
   };
   return () => {
@@ -247,6 +248,38 @@ test('extractFacebookPost with skipVideoVerification posts the browser_native vi
   }
 });
 
+test('extractFacebookPost sends a browser User-Agent and Cookie header when a cookie is configured', async () => {
+  let sentHeaders;
+  const restore = mockFetch('<html><head><meta property="og:title" content="A post"/></head></html>', {
+    captureHeaders: (h) => {
+      sentHeaders = h;
+    },
+  });
+  try {
+    await extractFacebookPost(uniquePostUrl(), { cookie: 'c_user=123; xs=abc' });
+    assert.equal(sentHeaders.Cookie, 'c_user=123; xs=abc');
+    assert.doesNotMatch(sentHeaders['User-Agent'], /facebookexternalhit/);
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost uses the crawler User-Agent and no Cookie header by default', async () => {
+  let sentHeaders;
+  const restore = mockFetch('<html><head><meta property="og:title" content="A post"/></head></html>', {
+    captureHeaders: (h) => {
+      sentHeaders = h;
+    },
+  });
+  try {
+    await extractFacebookPost(uniquePostUrl());
+    assert.match(sentHeaders['User-Agent'], /facebookexternalhit/);
+    assert.equal(sentHeaders.Cookie, undefined);
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost does not pick up a browser_native video URL from a comment on a text-only post', async () => {
   const restore = mockFetch(`
     <html><head>
@@ -376,6 +409,90 @@ test('buildEmbed falls back to a generic description when none was extracted', (
   const json = embed.toJSON();
   assert.equal(json.description, '[View on Facebook]');
   assert.equal(json.color, 0x1877f2);
+});
+
+test('buildEmbed adds inline fields for reactions/comments/shares when present', () => {
+  const [embed] = buildEmbed({
+    title: 'A post',
+    description: '',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+    reactions: 20348,
+    comments: 174,
+    shares: 386,
+  });
+  assert.deepEqual(embed.toJSON().fields, [
+    { name: 'Reactions', value: '20,348', inline: true },
+    { name: 'Comments', value: '174', inline: true },
+    { name: 'Shares', value: '386', inline: true },
+  ]);
+});
+
+test('buildEmbed omits fields entirely when no engagement counts were extracted', () => {
+  const [embed] = buildEmbed({
+    title: 'A post',
+    description: '',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+    reactions: null,
+    comments: null,
+    shares: null,
+  });
+  assert.equal(embed.toJSON().fields, undefined);
+});
+
+test('buildEmbed shows reactions/comments without a shares field when shares is null (no cookie configured)', () => {
+  const [embed] = buildEmbed({
+    title: 'A post',
+    description: '',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+    reactions: 20348,
+    comments: 174,
+    shares: null,
+  });
+  assert.deepEqual(embed.toJSON().fields, [
+    { name: 'Reactions', value: '20,348', inline: true },
+    { name: 'Comments', value: '174', inline: true },
+  ]);
+});
+
+test('extractFacebookPost reads reactions/comments from the anonymous crawler-view fragment (no cookie)', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="A post" />
+    </head>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz","comment_rendering_instance":{"comments":{"total_count":174}},"i18n_reaction_count":"20K","reaction_count":{"count":20347,"is_empty":false}}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(data.comments, 174);
+    assert.equal(data.reactions, 20347);
+    assert.equal(data.shares, null);
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost reads reactions/comments/shares from the logged-in fragment when a cookie is configured', async () => {
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="A Reel" />
+    </head>
+    <script>{"story":{"creation_time":1600000000,"id":"ZmVlZGJhY2s6MTIyMjMyMTM1NTQyMzY1NDA4","viewer_actor":{"id":"1"},"unified_reactors":{"count":20348}}}</script>
+    <script>{"feedback":{"total_comment_count":174,"id":"ZmVlZGJhY2s6MTIyMjMyMTM1NTQyMzY1NDA4","share_count_reduced":"386"}}</script>
+    <script>{"feedback":{"total_comment_count":150,"id":"ZmVlZGJhY2s6OTk5","share_count_reduced":"24"}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'), { cookie: 'c_user=1; xs=2' });
+    assert.equal(data.reactions, 20348);
+    assert.equal(data.comments, 174);
+    assert.equal(data.shares, 386);
+  } finally {
+    restore();
+  }
 });
 
 test('buildEmbed returns one gallery embed per extra photo, sharing the same URL', () => {

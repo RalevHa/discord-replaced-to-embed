@@ -34,6 +34,13 @@ module.exports = Object.freeze({
   // "true" to post the video link unverified anyway; it'll sometimes be a dead player.
   facebookTrustUnverifiedVideo: process.env.FACEBOOK_TRUST_UNVERIFIED_VIDEO === 'true',
 
+  // Optional: Cookie header value from a logged-in Facebook session (use a throwaway
+  // account — scraping at bot volume risks a checkpoint/ban on whatever account this
+  // belongs to). When set, posts are fetched as that browser session instead of as
+  // Facebook's own crawler, which gets the real page instead of the degraded
+  // link-preview response and improves video-link success. Empty = crawler UA as before.
+  facebookCookie: (process.env.FACEBOOK_COOKIE || '').trim(),
+
   // --- Cross-channel spam (hijacked-account) detection ---
   // When one member posts the same text across spamChannelThreshold+ channels within
   // spamWindow seconds, the bot deletes those messages and times the member out.
