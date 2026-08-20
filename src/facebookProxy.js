@@ -26,13 +26,17 @@ function escapeHtml(str) {
 
 /** Build the synthetic OG/Twitter-Player HTML a crawler sees for a post. */
 function buildProxyHtml(data, canonicalUrl) {
+  // No footer field exists in OG-tag land (unlike the bot-built embed's setFooter,
+  // see buildEmbed) — fold the counts into the description as a trailing line instead.
+  const engagement = facebook.engagementLine(data);
+  const description = [data.description, engagement].filter(Boolean).join('\n\n');
+
   const tags = [
     `<meta property="og:title" content="${escapeHtml(data.title || data.siteName || 'Facebook')}"/>`,
-    data.description
-      ? `<meta property="og:description" content="${escapeHtml(data.description)}"/>`
-      : '',
+    description ? `<meta property="og:description" content="${escapeHtml(description)}"/>` : '',
     data.image ? `<meta property="og:image" content="${escapeHtml(data.image)}"/>` : '',
     `<meta property="og:url" content="${escapeHtml(canonicalUrl)}"/>`,
+    '<meta name="theme-color" content="#1877f2"/>', // Facebook blue, matches buildEmbed's setColor
   ];
 
   if (data.video) {

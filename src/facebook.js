@@ -385,6 +385,19 @@ function humanFormat(n) {
   return `${(n / unit).toFixed(1).replace(/\.0$/, '')}${suffix}`;
 }
 
+// Shares are only ever available when FACEBOOK_COOKIE is set (see
+// extractEngagementCounts) — reactions/comments show either way. Returns null
+// when none of the three are available. Shared by buildEmbed's footer and
+// buildProxyHtml's description (see facebookProxy.js), so both surfaces show
+// the same counts.
+function engagementLine(data) {
+  const parts = [];
+  if (data.reactions != null) parts.push(`❤️ ${humanFormat(data.reactions)}`);
+  if (data.comments != null) parts.push(`💬 ${humanFormat(data.comments)}`);
+  if (data.shares != null) parts.push(`🔁 ${humanFormat(data.shares)}`);
+  return parts.length ? parts.join(' • ') : null;
+}
+
 /** Build Discord embed(s) from extracted post data. Extra photos (beyond the
  * first) ride along as bare image-only embeds sharing the same URL — Discord
  * groups same-URL embeds into one gallery grid, up to 4 images. */
@@ -392,13 +405,8 @@ function buildEmbed(data) {
   const siteName = data.siteName || 'Facebook';
   const dateLine = data.timestamp ? `${siteName} • ${formatUtc7(data.timestamp)} (UTC+7)` : siteName;
 
-  // Shares are only ever available when FACEBOOK_COOKIE is set (see
-  // extractEngagementCounts) — reactions/comments show either way.
-  const engagementParts = [];
-  if (data.reactions != null) engagementParts.push(`❤️ ${humanFormat(data.reactions)}`);
-  if (data.comments != null) engagementParts.push(`💬 ${humanFormat(data.comments)}`);
-  if (data.shares != null) engagementParts.push(`🔁 ${humanFormat(data.shares)}`);
-  const footerText = engagementParts.length ? `${dateLine}\n${engagementParts.join(' • ')}` : dateLine;
+  const engagement = engagementLine(data);
+  const footerText = engagement ? `${dateLine}\n${engagement}` : dateLine;
 
   const embed = new EmbedBuilder()
     .setColor(0x1877f2) // Facebook blue
@@ -429,6 +437,7 @@ module.exports = {
   extractFacebookMatches,
   extractFacebookPost,
   buildEmbed,
+  engagementLine,
   normalizeUrl,
   encodeProxyPath,
   decodeProxyPath,
