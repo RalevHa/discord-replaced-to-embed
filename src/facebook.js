@@ -209,8 +209,14 @@ function extractEmbeddedPostData(html) {
  * Fetch a Facebook URL and extract embeddable post data (title, description, image).
  * Returns null if nothing usable came back (login wall, deleted post, network error).
  * Results are cached for CACHE_TTL_MS so re-shares don't re-fetch.
+ *
+ * `skipVideoVerification`: post the browser_native lookaside URL without HEAD-checking
+ * it first. That endpoint genuinely 500s for some posts (Facebook-side, not fixable
+ * client-side) — verifying avoids showing a broken video player, but means those posts
+ * fall back to an image-only embed. Skipping trades that safety for more videos posted,
+ * some of which won't actually play.
  */
-async function extractFacebookPost(url) {
+async function extractFacebookPost(url, { skipVideoVerification = false } = {}) {
   const key = normalizeUrl(url);
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.data;
@@ -245,7 +251,9 @@ async function extractFacebookPost(url) {
         // verified before use since that fallback isn't reliable (see verifyVideoUrl).
         const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
         const browserNativeVideo = taggedVideo ? null : extractBrowserNativeVideoUrl(html);
-        const video = taggedVideo || (browserNativeVideo && (await verifyVideoUrl(browserNativeVideo)) ? browserNativeVideo : null);
+        const browserNativeVideoOk =
+          browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
+        const video = taggedVideo || (browserNativeVideoOk ? browserNativeVideo : null);
         data = {
           title: tags['og:title'] || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',

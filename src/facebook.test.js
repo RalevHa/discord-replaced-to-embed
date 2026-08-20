@@ -227,6 +227,26 @@ test('extractFacebookPost discards a browser_native video URL that fails the HEA
   }
 });
 
+test('extractFacebookPost with skipVideoVerification posts the browser_native video URL even when the HEAD check fails', async () => {
+  const restore = mockFetch(
+    `
+    <html><head>
+      <meta property="og:type" content="video.other" />
+      <meta property="og:title" content="A Reel" />
+    </head>
+    <script>{"story":{"creation_time":1600000000,"attachments":[{"media":{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=123"}}]}}</script>
+    </html>
+  `,
+    { videoOk: false }
+  );
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'), { skipVideoVerification: true });
+    assert.equal(data.video, 'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=123');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost does not pick up a browser_native video URL from a comment on a text-only post', async () => {
   const restore = mockFetch(`
     <html><head>
