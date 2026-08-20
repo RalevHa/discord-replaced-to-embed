@@ -390,7 +390,7 @@ test('buildEmbed shows the post date fixed to UTC+7 in the footer, labeled as su
     url: 'https://facebook.com/x',
     timestamp: 1451861194000, // 2016-01-03T22:46:34Z -> 2016-01-04 05:46 in UTC+7
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook • Jan 4, 2016, 05:46 (UTC+7)');
+  assert.equal(embed.toJSON().footer.text, 'Facebook • 4 Jan 2016, 05:46 (UTC+7)');
 });
 
 test('buildEmbed footer is just the site name when no post date was found', () => {
@@ -411,24 +411,21 @@ test('buildEmbed falls back to a generic description when none was extracted', (
   assert.equal(json.color, 0x1877f2);
 });
 
-test('buildEmbed adds inline fields for reactions/comments/shares when present', () => {
+test('buildEmbed appends a compact emoji engagement line to the footer when counts are present', () => {
   const [embed] = buildEmbed({
     title: 'A post',
     description: '',
     siteName: 'Facebook',
     url: 'https://facebook.com/x',
+    timestamp: null,
     reactions: 20348,
     comments: 174,
     shares: 386,
   });
-  assert.deepEqual(embed.toJSON().fields, [
-    { name: 'Reactions', value: '20,348', inline: true },
-    { name: 'Comments', value: '174', inline: true },
-    { name: 'Shares', value: '386', inline: true },
-  ]);
+  assert.equal(embed.toJSON().footer.text, 'Facebook\n❤️ 20.3K • 💬 174 • 🔁 386');
 });
 
-test('buildEmbed omits fields entirely when no engagement counts were extracted', () => {
+test('buildEmbed leaves the footer as just the date/site line when no engagement counts were extracted', () => {
   const [embed] = buildEmbed({
     title: 'A post',
     description: '',
@@ -438,23 +435,32 @@ test('buildEmbed omits fields entirely when no engagement counts were extracted'
     comments: null,
     shares: null,
   });
-  assert.equal(embed.toJSON().fields, undefined);
+  assert.equal(embed.toJSON().footer.text, 'Facebook');
 });
 
-test('buildEmbed shows reactions/comments without a shares field when shares is null (no cookie configured)', () => {
+test('buildEmbed shows reactions/comments without a shares segment when shares is null (no cookie configured)', () => {
   const [embed] = buildEmbed({
     title: 'A post',
     description: '',
     siteName: 'Facebook',
     url: 'https://facebook.com/x',
+    timestamp: null,
     reactions: 20348,
     comments: 174,
     shares: null,
   });
-  assert.deepEqual(embed.toJSON().fields, [
-    { name: 'Reactions', value: '20,348', inline: true },
-    { name: 'Comments', value: '174', inline: true },
-  ]);
+  assert.equal(embed.toJSON().footer.text, 'Facebook\n❤️ 20.3K • 💬 174');
+});
+
+test('humanFormat abbreviates large counts to one decimal (K/M), leaves small counts as-is', () => {
+  const [under1k] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 174 });
+  assert.match(under1k.toJSON().footer.text, /❤️ 174(?!\d)/);
+  const [thousands] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 20348 });
+  assert.match(thousands.toJSON().footer.text, /❤️ 20\.3K/);
+  const [millions] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 1_200_000 });
+  assert.match(millions.toJSON().footer.text, /❤️ 1\.2M/);
+  const [exactRound] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 20000 });
+  assert.match(exactRound.toJSON().footer.text, /❤️ 20K(?!\d)/);
 });
 
 test('extractFacebookPost reads reactions/comments from the anonymous crawler-view fragment (no cookie)', async () => {
