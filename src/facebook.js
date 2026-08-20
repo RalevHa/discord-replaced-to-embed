@@ -19,6 +19,15 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // absorbs re-shares of the same post witho
 const FETCH_TIMEOUT_MS = 8000;
 const VIDEO_VERIFY_TIMEOUT_MS = 4000;
 
+// The crawler UA gets Facebook's lightweight "link preview" response, which for some
+// Reels/videos only exposes the flaky lookaside.fbsbx.com crawler-media endpoint (see
+// verifyVideoUrl). A logged-in session gets the real page instead, so when a cookie is
+// configured (see extractFacebookPost's `cookie` option), requests impersonate a real
+// browser and attach it rather than announcing themselves as a crawler.
+const CRAWLER_USER_AGENT = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+
 // Facebook serves a generic "log in to see this" page instead of real OG tags when it
 // doesn't like the request (rate limiting, geo, etc.). Treat that as extraction failure
 // rather than posting a useless embed.
@@ -149,6 +158,47 @@ function extractPostTimestamp(html) {
   return m ? Number(m[1]) * 1000 : null;
 }
 
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Facebook duplicates engagement counts across several GraphQL fragments in the same
+// page, under different field names depending on whether the request is authenticated:
+// - Anonymous/crawler fragment: `reaction_count`/`comment_rendering_instance`, paired
+//   together — no share count is exposed to anonymous requests at all.
+// - Logged-in fragment (only present with a `cookie`, see extractFacebookPost):
+//   `unified_reactors` (inside the post's own "story" object, so reliably scoped) plus
+//   `total_comment_count`/`share_count_reduced` elsewhere in the page, tied back to the
+//   right post via the shared feedback id read out of "story".
+// Both shapes repeat similar-looking blocks for *other* posts on the page (a suggested
+// Reels tray, preloaded comments) — the pairing/id-matching below is what keeps this
+// from picking up the wrong post's numbers.
+function extractEngagementCounts(html) {
+  const story = extractJsonObject(html, /"story":\{/);
+  if (story) {
+    const feedbackId = /"id":"(ZmVlZGJhY2s6[^"]+)","viewer_actor"/.exec(story);
+    const reactions = /"unified_reactors":\{"count":(\d+)/.exec(story);
+    if (feedbackId && reactions) {
+      const shareMatch = new RegExp(
+        `"total_comment_count":(\\d+),[\\s\\S]{0,200}?"id":"${escapeRegExp(feedbackId[1])}","share_count_reduced":"(\\d+)"`
+      ).exec(html);
+      return {
+        reactions: Number(reactions[1]),
+        comments: shareMatch ? Number(shareMatch[1]) : null,
+        shares: shareMatch ? Number(shareMatch[2]) : null,
+      };
+    }
+  }
+
+  const anon =
+    /"comment_rendering_instance":\{"comments":\{"total_count":(\d+)\}\}[\s\S]{0,300}?"reaction_count":\{"count":(\d+)/.exec(
+      html
+    );
+  if (anon) return { reactions: Number(anon[2]), comments: Number(anon[1]), shares: null };
+
+  return { reactions: null, comments: null, shares: null };
+}
+
 // Unlike an actual og:video: tag, the browser_native lookaside url is an
 // undocumented endpoint that serves the real .mp4 for some posts and a 500
 // error page for others, with nothing in the post's own metadata predicting
@@ -215,8 +265,12 @@ function extractEmbeddedPostData(html) {
  * client-side) — verifying avoids showing a broken video player, but means those posts
  * fall back to an image-only embed. Skipping trades that safety for more videos posted,
  * some of which won't actually play.
+ *
+ * `cookie`: a logged-in session's Cookie header value. When set, fetches the post as
+ * that browser session instead of as Facebook's own crawler — gets the real page
+ * (better odds of a working video URL) at the cost of using a real account to scrape.
  */
-async function extractFacebookPost(url, { skipVideoVerification = false } = {}) {
+async function extractFacebookPost(url, { skipVideoVerification = false, cookie = '' } = {}) {
   const key = normalizeUrl(url);
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.data;
@@ -224,11 +278,31 @@ async function extractFacebookPost(url, { skipVideoVerification = false } = {}) 
   let data = null;
   try {
     const response = await fetch(key, {
-      headers: {
-        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+      headers: cookie
+        ? {
+            // A logged-in request gets Facebook's bot-fingerprint check applied (the
+            // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
+            // gets a generic HTTP 400 "Error" page; needs the browser-signature
+            // headers Chrome itself sends alongside a real cookie to pass.
+            'User-Agent': BROWSER_USER_AGENT,
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Upgrade-Insecure-Requests': '1',
+            Cookie: cookie,
+          }
+        : {
+            'User-Agent': CRAWLER_USER_AGENT,
+            Accept: 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
       redirect: 'follow',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
@@ -254,6 +328,7 @@ async function extractFacebookPost(url, { skipVideoVerification = false } = {}) 
         const browserNativeVideoOk =
           browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
         const video = taggedVideo || (browserNativeVideoOk ? browserNativeVideo : null);
+        const engagement = extractEngagementCounts(html);
         data = {
           title: tags['og:title'] || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',
@@ -263,6 +338,9 @@ async function extractFacebookPost(url, { skipVideoVerification = false } = {}) 
           siteName: tags['og:site_name'] || 'Facebook',
           url: tags['og:url'] || key,
           timestamp: extractPostTimestamp(html),
+          reactions: engagement.reactions,
+          comments: engagement.comments,
+          shares: engagement.shares,
         };
       }
     }
@@ -300,6 +378,14 @@ function buildEmbed(data) {
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
+
+  // Shares are only ever available when FACEBOOK_COOKIE is set (see
+  // extractEngagementCounts) — reactions/comments show either way.
+  const fields = [];
+  if (data.reactions != null) fields.push({ name: 'Reactions', value: data.reactions.toLocaleString(), inline: true });
+  if (data.comments != null) fields.push({ name: 'Comments', value: data.comments.toLocaleString(), inline: true });
+  if (data.shares != null) fields.push({ name: 'Shares', value: data.shares.toLocaleString(), inline: true });
+  if (fields.length) embed.addFields(fields);
 
   const images = data.images && data.images.length ? data.images : data.image ? [data.image] : [];
   if (images[0]) embed.setImage(images[0]);
