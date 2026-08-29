@@ -14,3 +14,4 @@ tricks, SQL optimizations, API/UI patterns, deployment and performance solutions
 
 <!-- Add one line per Skill: - [Title](file.md) — one-line hook -->
 - [Per-guild config knob backed by storage.js](per-guild-redis-config.md) — how to add a new per-guild setting (storage + slash command + admin API + admin panel), and the `Object.hasOwn` gotcha for whitelist checks keyed by user-supplied strings.
+- [Listening for message reactions in discord.js](discordjs-reactions.md) — the intent + partials + fetch-before-use setup a reaction-triggered feature needs, and why it's not a new bot permission.

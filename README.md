@@ -21,6 +21,8 @@ auto-embed, and replies with embeddable alternatives so they preview properly in
    - **Suppresses** the original message's auto-embed (the broken preview), and
    - **Replies** with the converted links (which Discord auto-embeds) and/or native
      Facebook embeds, without pinging the author.
+4. React 🗑️ on the bot's reply — as the original poster or anyone with **Manage Messages** —
+   to delete it and restore the original message's native embed.
 
 ### Supported Platforms
 
