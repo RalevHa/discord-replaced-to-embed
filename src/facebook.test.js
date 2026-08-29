@@ -7,6 +7,8 @@ const {
   buildEmbed,
   encodeProxyPath,
   decodeProxyPath,
+  suppressFacebookLinksInText,
+  spoilerFixUrl,
 } = require('./facebook');
 
 test('extractFacebookUrls finds bare and scheme-prefixed links', () => {
@@ -27,6 +29,22 @@ test('extractFacebookUrls matches subdomains (m., web.) and fb.watch', () => {
 
 test('extractFacebookUrls ignores lookalike domains', () => {
   assert.deepEqual(extractFacebookUrls('notfacebook.com/x and facebooky.com/y'), []);
+});
+
+test('spoilerFixUrl swaps the domain for the public fixup host, dropping subdomains', () => {
+  assert.equal(
+    spoilerFixUrl('https://www.facebook.com/user/posts/123'),
+    'https://facebed.seria.moe/user/posts/123'
+  );
+  assert.equal(spoilerFixUrl('https://fb.watch/abc123/'), 'https://facebed.seria.moe/abc123/');
+});
+
+test('suppressFacebookLinksInText wraps a raw link in <...> without touching other text', () => {
+  assert.equal(
+    suppressFacebookLinksInText('see https://facebook.com/user/posts/123 for details'),
+    'see <https://facebook.com/user/posts/123> for details'
+  );
+  assert.equal(suppressFacebookLinksInText('no facebook link here'), 'no facebook link here');
 });
 
 test('extractFacebookUrls dedupes repeated links', () => {

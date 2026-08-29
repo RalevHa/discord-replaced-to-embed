@@ -55,14 +55,20 @@ the actual mechanism.
   user (suppressed on a message being deleted anyway) but is now live in a fresh message.
 - **The fix above wasn't the whole story — a "genuinely new content" array can carry entries
   that are actually just passthrough of something already in the resent text.** A spoilered
-  Facebook link's only "conversion" is a plain `||url||` passthrough line, pushed into the same
-  array as real new content (video/CDN links) — fine for a normal reply (the passthrough IS the
-  reply's only content), but in webhook mode that same array gets appended *after* the full
-  original text, which already contains that spoilered link (now wrapped per the point above) —
-  appending the passthrough again prints the same link twice. Caught by the user testing a
-  message that was *only* the spoilered link (no other link to mask it). Fixed by splitting
-  "genuinely new" entries from "already represented elsewhere" ones into two separate arrays at
-  the source, rather than trying to filter one shared array after the fact.
+  Facebook link's only "conversion" used to be a plain `||url||` passthrough line — fine for a
+  normal reply (the original message still exists separately; the passthrough IS the reply's
+  only content), but in webhook mode, appending that same passthrough *after* the full original
+  text (which already contains that spoilered link, now wrapped per the point above) printed the
+  same link twice. Caught by the user testing a message that was *only* the spoilered link (no
+  other link to mask it). The real fix wasn't just separating arrays — it was making the spoiler
+  branch stop reposting a passthrough at all: route it through a fixup host
+  (`facebook.js`'s `spoilerFixUrl`) instead, same as the non-spoiler case, so it's genuinely new
+  content (a different domain) rather than a copy of what's already sitting in the text. That
+  incidentally also fixed a *second*, user-reported problem: a bot-attached embed can't be
+  spoiler-blurred by Discord (only a natively-unfurled link or a `SPOILER_`-prefixed attachment
+  can), so a spoilered Facebook link previously got no working preview at all, unlike every other
+  platform. Routing it through a public fixup host means Discord's own unfurl handles it, which
+  *does* inherit the spoiler.
 - Re-sending the original's attachments works by passing the `Attachment` objects straight
   through in `files` — discord.js resolves them by URL, no manual download/re-upload needed.
 

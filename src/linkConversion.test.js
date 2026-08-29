@@ -40,14 +40,24 @@ test('buildWebhookContent joins the rewritten text with any Facebook video links
   assert.equal(buildWebhookContent('hello https://fixupx.com/a', []), 'hello https://fixupx.com/a');
 });
 
-// Regression test: a message that's ONLY a spoilered Facebook link must not
-// print that link twice in webhook-repost content — newText already contains
-// it (suppressed), so facebookVideoLinks must NOT also carry a passthrough
-// copy of it (that passthrough is reply-mode-only, see buildConversion).
-test('a spoilered Facebook link with nothing else is not duplicated in webhook content', async () => {
+// A spoilered Facebook link gets routed to a public fixup host (facebed.seria.moe)
+// instead of a raw passthrough of the same facebook.com URL, so Discord's own
+// native unfurl handles it — which DOES inherit the spoiler, unlike a bot-built
+// embed. The original raw URL still sits (suppressed) in newText; the fixup link
+// is genuinely different content, not a duplicate of it.
+test('a spoilered Facebook link is routed to a fixup host, not reposted raw', async () => {
   const input = '||https://www.facebook.com/ExtremeITReview/posts/pfbid026qBBNoXkxnq6rohhZFd4UNwhUE6JK9j7X64dCSxVV9xtjaWMkD58zE6yjrsU6RPil||';
   const { newText, facebookVideoLinks } = await buildConversion(input, baseConfig);
-  assert.equal(facebookVideoLinks.length, 0, 'no passthrough entry should reach webhook mode');
-  assert.equal(buildWebhookContent(newText, facebookVideoLinks), newText);
-  assert.equal((buildWebhookContent(newText, facebookVideoLinks).match(/pfbid026q/g) || []).length, 1);
+  assert.equal(
+    newText,
+    '||<https://www.facebook.com/ExtremeITReview/posts/pfbid026qBBNoXkxnq6rohhZFd4UNwhUE6JK9j7X64dCSxVV9xtjaWMkD58zE6yjrsU6RPil>||'
+  );
+  assert.deepEqual(facebookVideoLinks, [
+    '||https://facebed.seria.moe/ExtremeITReview/posts/pfbid026qBBNoXkxnq6rohhZFd4UNwhUE6JK9j7X64dCSxVV9xtjaWMkD58zE6yjrsU6RPil||',
+  ]);
+  // Both lines present (suppressed original + live fixup) — not an exact duplicate.
+  assert.equal(
+    buildWebhookContent(newText, facebookVideoLinks),
+    `${newText}\n${facebookVideoLinks[0]}`
+  );
 });

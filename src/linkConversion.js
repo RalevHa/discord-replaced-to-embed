@@ -28,21 +28,21 @@ async function buildConversion(content, config, overrides = {}) {
     : { newText: content, replaced: [] };
 
   const facebookEmbeds = [];
+  // Real, new-content links — a fixed spoiler redirect or a video/CDN URL,
+  // never the raw original facebook.com URL — so appending these is always
+  // safe in both reply and webhook-repost content: neither is already present
+  // (verbatim) in newText, unlike a plain passthrough of the same link would be.
   const facebookVideoLinks = [];
-  // Spoilered Facebook links only get a plain passthrough (see below) — that's
-  // genuinely new content for a reply (the original message's own copy has its
-  // embeds suppressed), but NOT for webhook-repost content, whose newText
-  // already contains that same spoilered link verbatim (see webhookSafeText
-  // below) — appending it there too would just print it twice. Kept separate
-  // from facebookVideoLinks (which webhook mode DOES want — a real video/CDN
-  // link is new content in both modes) so buildWebhookContent can skip these.
-  const facebookSpoilerLinks = [];
   // Cap per-message to avoid one message triggering a burst of outbound fetches.
   for (const { url, spoiler } of facebookMatches.slice(0, 4)) {
     if (spoiler) {
-      // Spoilered like any other link (see rules.js) — skip the fetch/embed
-      // entirely so nothing (image, description) leaks before it's revealed.
-      facebookSpoilerLinks.push(`||${url}||`);
+      // Skip the OG-scrape/embed-build entirely — a bot-attached embed can't be
+      // spoiler-blurred by Discord, so building it now would leak the
+      // image/description before it's revealed. Route through a public fixup
+      // host instead of the raw facebook.com URL so Discord's own native
+      // unfurl handles it, which DOES inherit the spoiler — same "revealed on
+      // click" experience every other platform already gets (see facebook.js).
+      facebookVideoLinks.push(`||${facebook.spoilerFixUrl(url)}||`);
       replaced.push({ label: 'Facebook' });
       continue;
     }
@@ -76,8 +76,7 @@ async function buildConversion(content, config, overrides = {}) {
   const textLinks = replaced
     .filter((r) => r.converted)
     .map((r) => r.converted)
-    .concat(facebookVideoLinks)
-    .concat(facebookSpoilerLinks);
+    .concat(facebookVideoLinks);
 
   // newText (used only for webhook-repost content, see buildWebhookContent) is
   // the whole original message re-sent as fresh content — unlike a normal reply,
@@ -101,9 +100,9 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
 
 /** Webhook-repost content: the *whole* original message with its link(s)
  * swapped in place (unlike buildReplyPayload's link-only content), plus any
- * genuinely new Facebook video/CDN links appended — NOT the spoiler-passthrough
- * entries buildConversion keeps separate, since those already appear verbatim
- * (suppressed) inside newText and would otherwise print twice. */
+ * Facebook video/spoiler-fixup links appended the same way a normal reply
+ * would — safe in both, since neither is a passthrough of something already
+ * sitting verbatim in newText (see buildConversion). */
 function buildWebhookContent(newText, facebookVideoLinks) {
   return [newText, ...facebookVideoLinks].join('\n');
 }
