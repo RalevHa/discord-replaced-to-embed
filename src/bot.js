@@ -4,7 +4,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
 
 const config = require('./config');
 const rules = require('./rules');
@@ -15,6 +15,7 @@ const interactionCreate = require('./events/interactionCreate');
 const messageCreate = require('./events/messageCreate');
 const messageUpdate = require('./events/messageUpdate');
 const messageDelete = require('./events/messageDelete');
+const messageReactionAdd = require('./events/messageReactionAdd');
 const facebookProxy = require('./facebookProxy');
 const deployWebhook = require('./deployWebhook');
 const dashboard = require('./dashboard');
@@ -113,7 +114,11 @@ function start() {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMessageReactions,
     ],
+    // Reactions on a message the bot hasn't cached (e.g. after a restart)
+    // arrive partial — these let messageReactionAdd fetch the rest.
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
   });
 
   // Shared context handed to every event/command handler.
@@ -133,6 +138,7 @@ function start() {
   client.on('messageCreate', (message) => messageCreate(message, ctx));
   client.on('messageUpdate', (oldMessage, newMessage) => messageUpdate(oldMessage, newMessage, ctx));
   client.on('messageDelete', (message) => messageDelete(message, ctx));
+  client.on('messageReactionAdd', (reaction, user) => messageReactionAdd(reaction, user, ctx));
 
   client.login(config.token);
   startHealthServer(config.port, ctx);
