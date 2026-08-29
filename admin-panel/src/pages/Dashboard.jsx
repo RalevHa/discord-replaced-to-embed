@@ -219,6 +219,10 @@ export default function Dashboard() {
 
       <div className="card">
         <h3>Link conversions</h3>
+        <p className="dim">
+          {status.persistent ? 'All time' : 'Since last restart'} — tracking for{' '}
+          {formatDuration(Date.now() - status.stats.since)}
+        </p>
         <p>
           Total: <b>{status.stats.total}</b> · Spam floods blocked: <b>{status.stats.spamCaught}</b>
         </p>
