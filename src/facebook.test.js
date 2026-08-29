@@ -2,12 +2,13 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   extractFacebookUrls,
+  extractFacebookMatches,
   normalizeUrl,
   extractFacebookPost,
   buildEmbed,
   encodeProxyPath,
   decodeProxyPath,
-  suppressFacebookLinksInText,
+  rewriteFacebookLinksForRepost,
   spoilerFixUrl,
 } = require('./facebook');
 
@@ -39,12 +40,19 @@ test('spoilerFixUrl swaps the domain for the public fixup host, dropping subdoma
   assert.equal(spoilerFixUrl('https://fb.watch/abc123/'), 'https://facebed.seria.moe/abc123/');
 });
 
-test('suppressFacebookLinksInText wraps a raw link in <...> without touching other text', () => {
+test('rewriteFacebookLinksForRepost wraps a non-spoilered link in <...> without touching other text', () => {
+  const text = 'see https://facebook.com/user/posts/123 for details';
   assert.equal(
-    suppressFacebookLinksInText('see https://facebook.com/user/posts/123 for details'),
+    rewriteFacebookLinksForRepost(text, extractFacebookMatches(text)),
     'see <https://facebook.com/user/posts/123> for details'
   );
-  assert.equal(suppressFacebookLinksInText('no facebook link here'), 'no facebook link here');
+  assert.equal(rewriteFacebookLinksForRepost('no facebook link here', []), 'no facebook link here');
+});
+
+test('rewriteFacebookLinksForRepost swaps a spoilered link to the fixup host in place, keeping the || bars', () => {
+  const text = '||https://www.facebook.com/user/posts/123||';
+  const matches = [{ url: 'https://www.facebook.com/user/posts/123', spoiler: true }];
+  assert.equal(rewriteFacebookLinksForRepost(text, matches), '||https://facebed.seria.moe/user/posts/123||');
 });
 
 test('extractFacebookUrls dedupes repeated links', () => {

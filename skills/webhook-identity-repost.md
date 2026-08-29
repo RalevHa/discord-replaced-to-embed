@@ -59,21 +59,23 @@ the actual mechanism.
   re-check every other special-cased link type for text that was previously invisible to the
   user (suppressed on a message being deleted anyway) but is now live in a fresh message.
 - **The fix above wasn't the whole story — a "genuinely new content" array can carry entries
-  that are actually just passthrough of something already in the resent text.** A spoilered
-  Facebook link's only "conversion" used to be a plain `||url||` passthrough line — fine for a
-  normal reply (the original message still exists separately; the passthrough IS the reply's
-  only content), but in webhook mode, appending that same passthrough *after* the full original
-  text (which already contains that spoilered link, now wrapped per the point above) printed the
-  same link twice. Caught by the user testing a message that was *only* the spoilered link (no
-  other link to mask it). The real fix wasn't just separating arrays — it was making the spoiler
-  branch stop reposting a passthrough at all: route it through a fixup host
-  (`facebook.js`'s `spoilerFixUrl`) instead, same as the non-spoiler case, so it's genuinely new
-  content (a different domain) rather than a copy of what's already sitting in the text. That
-  incidentally also fixed a *second*, user-reported problem: a bot-attached embed can't be
-  spoiler-blurred by Discord (only a natively-unfurled link or a `SPOILER_`-prefixed attachment
-  can), so a spoilered Facebook link previously got no working preview at all, unlike every other
-  platform. Routing it through a public fixup host means Discord's own unfurl handles it, which
-  *does* inherit the spoiler.
+  that are actually just passthrough of something already in the resent text, even after
+  changing WHAT that passthrough is.** A spoilered Facebook link's "conversion" was a plain
+  `||url||` passthrough appended after the full original text — duplicated, since that text
+  already contains the same link (wrapped per the point above). The first attempt at a fix routed
+  the passthrough through a fixup host (`facebook.js`'s `spoilerFixUrl`, so a bot-built embed —
+  which can't be spoiler-blurred by Discord — is replaced with a natively-unfurled one that DOES
+  inherit the spoiler) and reasoned the two lines were no longer "the same content", so appending
+  was safe again. **Still wrong** — the user still sees the same post twice: once as a dead
+  `||<facebook.com/...>||` link (suppressed, no preview) and once as the live fixup link right
+  below it. "Not byte-identical" isn't the bar; "does the user see this link twice" is. The actual
+  fix is to rewrite the link **in place** inside the resent text — swap its domain to the fixup
+  host *where the original URL already sits* (still inside the same `||...||` bars, so it stays
+  spoilered) — instead of leaving the original wrapped-and-dead and appending a second, live copy.
+  That still leaves the append-after-array split from the first fix attempt correctly in place for
+  a normal reply, which never resends the original text at all and so still needs the fixup link
+  as its only content line — the split was the right structure, the mistake was in what the
+  in-text side of it (the resent text itself) was left containing.
 - Re-sending the original's attachments works by passing the `Attachment` objects straight
   through in `files` — discord.js resolves them by URL, no manual download/re-upload needed.
 
@@ -81,5 +83,5 @@ the actual mechanism.
 
 - `src/webhookRepost.js`, `src/storage.js` (`trackRepostAuthor`/`getRepostAuthorId`/
   `untrackRepostAuthor`), `src/events/messageReactionAdd.js` (the "no original left to check
-  authorship against" case), `src/facebook.js`'s `suppressFacebookLinksInText`,
+  authorship against" case), `src/facebook.js`'s `rewriteFacebookLinksForRepost`/`spoilerFixUrl`,
   `skills/discordjs-reactions.md`.

@@ -39,17 +39,6 @@ const LOGIN_WALL_MARKERS = [
 
 const cache = new Map(); // normalized url -> { data, expires }
 
-/** Wraps every Facebook link in `<...>` — Discord's own per-link syntax for
- * suppressing just that link's auto-embed, unlike suppressEmbeds() which is
- * all-or-nothing for a whole message. Used when reposting a message's full
- * original text as fresh content (webhook-repost mode): Facebook links are
- * already represented by a native embed or video link built separately, so
- * leaving the raw URL live in that new message would make Discord generate
- * its own (broken) preview for it too, right alongside the real one. */
-function suppressFacebookLinksInText(text) {
-  return text.replace(FB_URL_PATTERN, (m) => `<${/^https?:\/\//i.test(m) ? m : `https://${m}`}>`);
-}
-
 // A bot-built embed (EmbedBuilder, sent via the API) can't be spoiler-blurred by
 // Discord the way a natively-unfurled link can, so a spoilered Facebook link skips
 // building the rich embed entirely (see extractFacebookMatches' caller in
@@ -64,6 +53,27 @@ const FB_DOMAIN_PATTERN = /(?:[\w-]+\.)*?(?:facebook\.com|fb\.watch|fb\.com)/i;
  * non-spoilered posts keep this bot's own richer OG-scraped embed. */
 function spoilerFixUrl(url) {
   return url.replace(FB_DOMAIN_PATTERN, SPOILER_FIX_HOST);
+}
+
+/** Rewrites every Facebook link in `text` (the whole original message, for a
+ * webhook repost) in place: a spoilered link's domain is swapped for the
+ * public fixup host so Discord's native unfurl still renders it — still
+ * inside the same `||...||` bars already in the text, so it stays spoilered —
+ * a non-spoilered link is wrapped in `<...>`, Discord's own per-link
+ * embed-suppression syntax, since its richer OG-scraped embed is attached
+ * separately and a live raw URL would otherwise get a second, broken
+ * auto-embed from Discord right alongside it. `matches` is
+ * extractFacebookMatches's output for the same text, reused here instead of
+ * re-detecting spoiler status so this can't disagree with the caller about
+ * which links are spoilered. Doing the swap in place — rather than leaving the
+ * raw link suppressed AND appending the fixup link as a second line — is what
+ * keeps a spoiler-only message from printing the same post twice. */
+function rewriteFacebookLinksForRepost(text, matches) {
+  const spoilerByUrl = new Map(matches.map((m) => [m.url, m.spoiler]));
+  return text.replace(FB_URL_PATTERN, (m) => {
+    const url = /^https?:\/\//i.test(m) ? m : `https://${m}`;
+    return spoilerByUrl.get(url) ? spoilerFixUrl(url) : `<${url}>`;
+  });
 }
 
 /** Find all Facebook links in a block of text (deduped, scheme normalized), each
@@ -462,7 +472,7 @@ function decodeProxyPath(segment) {
 module.exports = {
   extractFacebookUrls,
   extractFacebookMatches,
-  suppressFacebookLinksInText,
+  rewriteFacebookLinksForRepost,
   spoilerFixUrl,
   extractFacebookPost,
   buildEmbed,
