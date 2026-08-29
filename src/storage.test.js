@@ -121,3 +121,26 @@ test('resetFixerHost on an unset platform is a no-op', async () => {
   await assert.doesNotReject(() => storage.resetFixerHost('guild-1', 'Instagram'));
   assert.deepEqual(storage.getFixerOverrides('guild-1'), {});
 });
+
+test('isChannelIgnored is false until a channel is added', async () => {
+  const storage = memStorage();
+  assert.equal(storage.isChannelIgnored('guild-1', 'chan-1'), false);
+  await storage.addIgnoredChannel('guild-1', 'chan-1');
+  assert.equal(storage.isChannelIgnored('guild-1', 'chan-1'), true);
+  assert.deepEqual(storage.getIgnoredChannels('guild-1'), ['chan-1']);
+});
+
+test('removeIgnoredChannel removes just the one channel', async () => {
+  const storage = memStorage();
+  await storage.addIgnoredChannel('guild-1', 'chan-1');
+  await storage.addIgnoredChannel('guild-1', 'chan-2');
+  await storage.removeIgnoredChannel('guild-1', 'chan-1');
+  assert.equal(storage.isChannelIgnored('guild-1', 'chan-1'), false);
+  assert.equal(storage.isChannelIgnored('guild-1', 'chan-2'), true);
+});
+
+test('removeIgnoredChannel on a guild with no ignored channels is a no-op', async () => {
+  const storage = memStorage();
+  await assert.doesNotReject(() => storage.removeIgnoredChannel('guild-1', 'chan-1'));
+  assert.deepEqual(storage.getIgnoredChannels('guild-1'), []);
+});

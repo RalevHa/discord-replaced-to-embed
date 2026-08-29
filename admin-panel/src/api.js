@@ -25,6 +25,11 @@ export const api = {
     request(`/guilds/${id}/roll-channels`, { method: 'POST', body: JSON.stringify({ channelId }) }),
   removeRollChannel: (id, channelId) =>
     request(`/guilds/${id}/roll-channels/${channelId}`, { method: 'DELETE' }),
+  ignoredChannels: (id) => request(`/guilds/${id}/ignored-channels`),
+  addIgnoredChannel: (id, channelId) =>
+    request(`/guilds/${id}/ignored-channels`, { method: 'POST', body: JSON.stringify({ channelId }) }),
+  removeIgnoredChannel: (id, channelId) =>
+    request(`/guilds/${id}/ignored-channels/${channelId}`, { method: 'DELETE' }),
   guildFixers: (id) => request(`/guilds/${id}/fixers`),
   setGuildFixer: (id, label, host) =>
     request(`/guilds/${id}/fixers/${encodeURIComponent(label)}`, { method: 'PUT', body: JSON.stringify({ host }) }),

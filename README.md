@@ -14,7 +14,8 @@ auto-embed, and replies with embeddable alternatives so they preview properly in
 
 ### How It Works
 
-1. The bot listens to messages in allowed servers (skipping servers disabled via `/toggle`).
+1. The bot listens to messages in allowed servers (skipping servers disabled via `/toggle`,
+   and channels excluded via `/ignore-channel` — `/convert` still works manually there).
 2. It checks whether the message contains a supported link (rewritable, Facebook, or both).
 3. If so, it:
    - **Suppresses** the original message's auto-embed (the broken preview), and
@@ -118,6 +119,7 @@ otherwise globally, which can take up to ~1h to appear).
 | `/stats` | everyone | Conversions counted (all-time with Upstash, else since last restart). |
 | `/ping` | everyone | Bot round-trip + WebSocket latency. |
 | `/toggle` | Manage Server | Enable/disable automatic conversion in the current server. |
+| `/ignore-channel add\|remove\|list` | Manage Server | Exclude specific channels from automatic conversion (`/convert` still works there). |
 | `/fixer set\|reset\|list` | Manage Server | Choose which alternate embed-fixing host converts a platform's links in this server. |
 | `/roll <dice>` | everyone (allowed channels only) | Roll dice, e.g. `1d100` or `2d6+3`. Disabled everywhere until an admin allows a channel. |
 | `/roll-channel add\|remove\|list` | Manage Server | Manage which channels `/roll` is allowed in. |
@@ -214,10 +216,11 @@ serverless tier, HTTP-based):
 
 A password-protected web panel at `/admin` for managing the bot without touching
 Discord or the host machine directly: per-guild enable/disable, roll-channel
-management, and fixer-host selection (the same things `/toggle`, `/roll-channel`,
-and `/fixer` do — each guild's "Manage fixers" panel shows every configurable
-platform as a row of clickable host options), a `.env` editor, a manual deploy
-trigger with a live deploy log, and pm2 process controls (status, memory/CPU,
+management, ignored-channel management, and fixer-host selection (the same
+things `/toggle`, `/roll-channel`, `/ignore-channel`, and `/fixer` do — each
+guild's "Manage fixers" panel shows every configurable platform as a row of
+clickable host options), a `.env` editor, a manual deploy trigger with a live
+deploy log, and pm2 process controls (status, memory/CPU,
 restart count, Start/Stop/Restart, log tail). Built with React (frontend) and
 Express (backend, mounted alongside the existing health-check server).
 

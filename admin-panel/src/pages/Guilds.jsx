@@ -1,14 +1,17 @@
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api';
 
-function RollChannels({ guildId }) {
+// Shared shape for any "pick a channel to add/remove from a per-guild list"
+// panel — used for both the /roll-channel allowlist and the /ignore-channel
+// list so the two don't duplicate the same add/remove UI.
+function ChannelList({ guildId, list, add, remove, emptyText }) {
   const [channels, setChannels] = useState([]);
   const [available, setAvailable] = useState([]);
   const [picked, setPicked] = useState('');
   const [error, setError] = useState('');
 
   function reload() {
-    api.rollChannels(guildId).then(setChannels).catch((e) => setError(e.message));
+    list(guildId).then(setChannels).catch((e) => setError(e.message));
   }
 
   useEffect(() => {
@@ -17,15 +20,15 @@ function RollChannels({ guildId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guildId]);
 
-  async function add() {
+  async function handleAdd() {
     if (!picked) return;
-    await api.addRollChannel(guildId, picked);
+    await add(guildId, picked);
     setPicked('');
     reload();
   }
 
-  async function remove(channelId) {
-    await api.removeRollChannel(guildId, channelId);
+  async function handleRemove(channelId) {
+    await remove(guildId, channelId);
     reload();
   }
 
@@ -35,10 +38,10 @@ function RollChannels({ guildId }) {
       <ul>
         {channels.map((c) => (
           <li key={c.id}>
-            #{c.name} <button onClick={() => remove(c.id)}>Remove</button>
+            #{c.name} <button onClick={() => handleRemove(c.id)}>Remove</button>
           </li>
         ))}
-        {channels.length === 0 && <li className="dim">No roll channels — /roll is disabled here.</li>}
+        {channels.length === 0 && <li className="dim">{emptyText}</li>}
       </ul>
       <select value={picked} onChange={(e) => setPicked(e.target.value)}>
         <option value="">Add a channel…</option>
@@ -50,10 +53,34 @@ function RollChannels({ guildId }) {
             </option>
           ))}
       </select>
-      <button onClick={add} disabled={!picked}>
+      <button onClick={handleAdd} disabled={!picked}>
         Add
       </button>
     </div>
+  );
+}
+
+function RollChannels({ guildId }) {
+  return (
+    <ChannelList
+      guildId={guildId}
+      list={api.rollChannels}
+      add={api.addRollChannel}
+      remove={api.removeRollChannel}
+      emptyText="No roll channels — /roll is disabled here."
+    />
+  );
+}
+
+function IgnoredChannels({ guildId }) {
+  return (
+    <ChannelList
+      guildId={guildId}
+      list={api.ignoredChannels}
+      add={api.addIgnoredChannel}
+      remove={api.removeIgnoredChannel}
+      emptyText="No ignored channels — automatic conversion runs everywhere."
+    />
   );
 }
 
@@ -113,6 +140,7 @@ export default function Guilds() {
   const [guilds, setGuilds] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [expandedFixers, setExpandedFixers] = useState(null);
+  const [expandedIgnored, setExpandedIgnored] = useState(null);
   const [error, setError] = useState('');
 
   function reload() {
@@ -138,6 +166,7 @@ export default function Guilds() {
             <th>Server</th>
             <th>Link conversion</th>
             <th>Roll channels</th>
+            <th>Ignored channels</th>
             <th></th>
           </tr>
         </thead>
@@ -150,9 +179,13 @@ export default function Guilds() {
                   <button onClick={() => toggle(g)}>{g.disabled ? 'Enable' : 'Disable'}</button>
                 </td>
                 <td>{g.rollChannelCount}</td>
+                <td>{g.ignoredChannelCount}</td>
                 <td>
                   <button onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
                     {expanded === g.id ? 'Hide' : 'Manage roll channels'}
+                  </button>{' '}
+                  <button onClick={() => setExpandedIgnored(expandedIgnored === g.id ? null : g.id)}>
+                    {expandedIgnored === g.id ? 'Hide' : 'Manage ignored channels'}
                   </button>{' '}
                   <button onClick={() => setExpandedFixers(expandedFixers === g.id ? null : g.id)}>
                     {expandedFixers === g.id ? 'Hide' : 'Manage fixers'}
@@ -161,14 +194,21 @@ export default function Guilds() {
               </tr>
               {expanded === g.id && (
                 <tr>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <RollChannels guildId={g.id} />
+                  </td>
+                </tr>
+              )}
+              {expandedIgnored === g.id && (
+                <tr>
+                  <td colSpan={5}>
+                    <IgnoredChannels guildId={g.id} />
                   </td>
                 </tr>
               )}
               {expandedFixers === g.id && (
                 <tr>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <FixerPanel guildId={g.id} />
                   </td>
                 </tr>

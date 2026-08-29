@@ -38,6 +38,8 @@ module.exports = async function messageCreate(message, ctx) {
 
   // Skip servers where an admin disabled auto-conversion via /toggle.
   if (storage.isGuildDisabled(message.guild.id)) return;
+  // Skip channels an admin excluded via /ignore-channel — /convert still works there.
+  if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
   const { replaced, textLinks, facebookEmbeds } = await buildConversion(
     message.content,
