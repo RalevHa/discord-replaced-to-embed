@@ -14,7 +14,8 @@ module.exports = {
 
   async execute(interaction, { storage }) {
     const input = interaction.options.getString('url', true);
-    const { replaced } = applyReplacements(input);
+    const overrides = interaction.guildId ? storage.getFixerOverrides(interaction.guildId) : {};
+    const { replaced } = applyReplacements(input, overrides);
 
     if (replaced.length === 0) {
       await interaction.reply({

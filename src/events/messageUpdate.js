@@ -30,7 +30,11 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   const existingReply = existingReplyId
     ? await message.channel.messages.fetch(existingReplyId).catch(() => null)
     : null;
-  const { replaced, textLinks, facebookEmbeds } = await buildConversion(message.content, config);
+  const { replaced, textLinks, facebookEmbeds } = await buildConversion(
+    message.content,
+    config,
+    storage.getFixerOverrides(message.guild.id)
+  );
 
   try {
     if (replaced.length === 0) {

@@ -39,7 +39,11 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip servers where an admin disabled auto-conversion via /toggle.
   if (storage.isGuildDisabled(message.guild.id)) return;
 
-  const { replaced, textLinks, facebookEmbeds } = await buildConversion(message.content, config);
+  const { replaced, textLinks, facebookEmbeds } = await buildConversion(
+    message.content,
+    config,
+    storage.getFixerOverrides(message.guild.id)
+  );
   if (replaced.length === 0) return;
 
   storage.recordStats(replaced);

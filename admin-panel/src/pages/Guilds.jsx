@@ -57,9 +57,62 @@ function RollChannels({ guildId }) {
   );
 }
 
+function FixerPanel({ guildId }) {
+  const [fixers, setFixers] = useState(null);
+  const [error, setError] = useState('');
+
+  function reload() {
+    api.guildFixers(guildId).then(setFixers).catch((e) => setError(e.message));
+  }
+
+  useEffect(reload, [guildId]);
+
+  async function pick(label, host) {
+    await api.setGuildFixer(guildId, label, host);
+    reload();
+  }
+
+  async function reset(label) {
+    await api.resetGuildFixer(guildId, label);
+    reload();
+  }
+
+  if (error) return <p className="error">{error}</p>;
+  if (!fixers) return <p className="loading">Loading…</p>;
+
+  return (
+    <div className="fixer-grid">
+      {fixers.map((f) => (
+        <div className="fixer-card" key={f.label}>
+          <div className="fixer-card-head">
+            <span className="fixer-label">{f.label}</span>
+            {f.host !== f.default && (
+              <button className="link-button" onClick={() => reset(f.label)}>
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="fixer-options">
+            {f.options.map((host) => (
+              <button
+                key={host}
+                className={`pill${host === f.host ? ' pill-active' : ''}`}
+                onClick={() => pick(f.label, host)}
+              >
+                {host}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Guilds() {
   const [guilds, setGuilds] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [expandedFixers, setExpandedFixers] = useState(null);
   const [error, setError] = useState('');
 
   function reload() {
@@ -100,6 +153,9 @@ export default function Guilds() {
                 <td>
                   <button onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
                     {expanded === g.id ? 'Hide' : 'Manage roll channels'}
+                  </button>{' '}
+                  <button onClick={() => setExpandedFixers(expandedFixers === g.id ? null : g.id)}>
+                    {expandedFixers === g.id ? 'Hide' : 'Manage fixers'}
                   </button>
                 </td>
               </tr>
@@ -107,6 +163,13 @@ export default function Guilds() {
                 <tr>
                   <td colSpan={4}>
                     <RollChannels guildId={g.id} />
+                  </td>
+                </tr>
+              )}
+              {expandedFixers === g.id && (
+                <tr>
+                  <td colSpan={4}>
+                    <FixerPanel guildId={g.id} />
                   </td>
                 </tr>
               )}

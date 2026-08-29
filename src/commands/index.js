@@ -7,6 +7,7 @@ const list = [
   require('./convert'),
   require('./sources'),
   require('./toggle'),
+  require('./fixer'),
   require('./stats'),
   require('./roll'),
   require('./rollChannel'),
