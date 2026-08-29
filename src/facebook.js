@@ -50,6 +50,22 @@ function suppressFacebookLinksInText(text) {
   return text.replace(FB_URL_PATTERN, (m) => `<${/^https?:\/\//i.test(m) ? m : `https://${m}`}>`);
 }
 
+// A bot-built embed (EmbedBuilder, sent via the API) can't be spoiler-blurred by
+// Discord the way a natively-unfurled link can, so a spoilered Facebook link skips
+// building the rich embed entirely (see extractFacebookMatches' caller in
+// linkConversion.js) — nothing to leak before it's revealed. Routing the link
+// through a public fixup host instead of posting the raw facebook.com URL means
+// Discord's own native unfurl handles it, which DOES inherit the spoiler, giving
+// the same "revealed on click" experience every other platform already has.
+const SPOILER_FIX_HOST = 'facebed.seria.moe';
+const FB_DOMAIN_PATTERN = /(?:[\w-]+\.)*?(?:facebook\.com|fb\.watch|fb\.com)/i;
+
+/** Redirects a Facebook URL to a public fixup host, for the spoilered case only —
+ * non-spoilered posts keep this bot's own richer OG-scraped embed. */
+function spoilerFixUrl(url) {
+  return url.replace(FB_DOMAIN_PATTERN, SPOILER_FIX_HOST);
+}
+
 /** Find all Facebook links in a block of text (deduped, scheme normalized), each
  * flagged with whether it fell inside ||spoiler|| bars — first occurrence wins if
  * the same link appears both spoilered and not. */
@@ -447,6 +463,7 @@ module.exports = {
   extractFacebookUrls,
   extractFacebookMatches,
   suppressFacebookLinksInText,
+  spoilerFixUrl,
   extractFacebookPost,
   buildEmbed,
   engagementLine,

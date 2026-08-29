@@ -69,6 +69,11 @@ headless browser.
   your server's IP) the bot just leaves the message alone, same as an unsupported link.
 - Results are cached in-memory for 15 minutes so re-shares of the same post don't refetch.
 - Set `FACEBOOK_EMBED_ENABLED=false` to disable this feature entirely.
+- **Spoilered link (`||facebook.com/...||`)?** The bot never fetches/builds a preview for it —
+  a bot-attached embed can't be spoiler-blurred by Discord the way a natively-unfurled link can,
+  so building one anyway would leak the image/description before it's revealed. Instead it's
+  routed through a public fixup host (`facebed.seria.moe`) so Discord's own native unfurl
+  handles it — spoilered and revealed on click, same as every other platform in this bot.
 
 This only extracts what's in the page's OG tags — title/description/image/video. It doesn't
 fetch engagement stats (likes/comments). Video links come straight from Facebook's CDN and
