@@ -5,11 +5,14 @@ const { isExempt, handleFlood } = require('../moderation');
 const {
   buildConversion,
   buildReplyPayload,
+  buildWebhookContent,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,
 } = require('../linkConversion');
 const replyTracker = require('../replyTracker');
+const webhookRepost = require('../webhookRepost');
+const { DELETE_EMOJI } = require('../deleteReaction');
 
 module.exports = async function messageCreate(message, ctx) {
   const { config, storage, spam } = ctx;
@@ -41,7 +44,7 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip channels an admin excluded via /ignore-channel — /convert still works there.
   if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
-  const { replaced, textLinks, facebookEmbeds } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -50,6 +53,22 @@ module.exports = async function messageCreate(message, ctx) {
 
   storage.recordStats(replaced);
 
+  if (storage.isWebhookRepostEnabled(message.guild.id)) {
+    try {
+      const repost = await webhookRepost.repost(message, {
+        content: buildWebhookContent(newText, facebookVideoLinks),
+        embeds: facebookEmbeds,
+      });
+      // Best-effort: a one-click delete affordance, not required for the
+      // repost itself to have succeeded (needs the Add Reactions permission).
+      await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+      return;
+    } catch (err) {
+      console.error('Webhook repost failed, falling back to a normal reply:', err);
+      // falls through to the normal suppress+reply path below
+    }
+  }
+
   try {
     // Keep the original, just strip its auto-embed, then reply with the converted
     // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
@@ -57,6 +76,7 @@ module.exports = async function messageCreate(message, ctx) {
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
     const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
     replyTracker.set(message.id, reply.id);
+    await reply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
   } catch (err) {
     console.error('Error processing message:', err);
   }

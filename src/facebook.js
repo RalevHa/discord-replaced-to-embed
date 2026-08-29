@@ -39,6 +39,17 @@ const LOGIN_WALL_MARKERS = [
 
 const cache = new Map(); // normalized url -> { data, expires }
 
+/** Wraps every Facebook link in `<...>` — Discord's own per-link syntax for
+ * suppressing just that link's auto-embed, unlike suppressEmbeds() which is
+ * all-or-nothing for a whole message. Used when reposting a message's full
+ * original text as fresh content (webhook-repost mode): Facebook links are
+ * already represented by a native embed or video link built separately, so
+ * leaving the raw URL live in that new message would make Discord generate
+ * its own (broken) preview for it too, right alongside the real one. */
+function suppressFacebookLinksInText(text) {
+  return text.replace(FB_URL_PATTERN, (m) => `<${/^https?:\/\//i.test(m) ? m : `https://${m}`}>`);
+}
+
 /** Find all Facebook links in a block of text (deduped, scheme normalized), each
  * flagged with whether it fell inside ||spoiler|| bars — first occurrence wins if
  * the same link appears both spoilered and not. */
@@ -435,6 +446,7 @@ function decodeProxyPath(segment) {
 module.exports = {
   extractFacebookUrls,
   extractFacebookMatches,
+  suppressFacebookLinksInText,
   extractFacebookPost,
   buildEmbed,
   engagementLine,

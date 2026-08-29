@@ -7,6 +7,7 @@ auto-embed, and replies with embeddable alternatives so they preview properly in
 - 📘 **Native Facebook embeds** — scrapes Open Graph data, no self-hosted proxy required
 - 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
+- 🪝 **Optional webhook repost** — post the fix as the original author instead of a bot reply
 - 💾 **Optional persistence** via Upstash Redis (survives restarts/redeploys)
 - ☁️ **Deploy-ready** for Render's free tier with a built-in health check
 
@@ -17,12 +18,16 @@ auto-embed, and replies with embeddable alternatives so they preview properly in
 1. The bot listens to messages in allowed servers (skipping servers disabled via `/toggle`,
    and channels excluded via `/ignore-channel` — `/convert` still works manually there).
 2. It checks whether the message contains a supported link (rewritable, Facebook, or both).
-3. If so, it:
-   - **Suppresses** the original message's auto-embed (the broken preview), and
-   - **Replies** with the converted links (which Discord auto-embeds) and/or native
-     Facebook embeds, without pinging the author.
-4. React 🗑️ on the bot's reply — as the original poster or anyone with **Manage Messages** —
-   to delete it and restore the original message's native embed.
+3. If so, it either:
+   - **Suppresses** the original message's auto-embed (the broken preview) and **replies**
+     with the converted links (which Discord auto-embeds) and/or native Facebook embeds,
+     without pinging the author — the default; or
+   - With [webhook repost](#webhook-repost-optional) enabled, **deletes** the original and
+     **reposts** it as the original author via a channel webhook, fixed link and all.
+4. Either way, the bot adds a 🗑️ reaction to its own message so cleanup is one click — react
+   with it (as the original poster or anyone with **Manage Messages**) to delete it. For a
+   normal reply this also restores the original message's native embed; a webhook repost has
+   no original left to restore.
 
 ### Supported Platforms
 
@@ -36,7 +41,7 @@ single rule per platform covers every link form.
 | X (Twitter) | `https://(sub.)x.com/PATH` | `https://fixupx.com/PATH` |
 | Pixiv | `https://(sub.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
 | Bluesky | `https://(sub.)bsky.app/PATH` | `https://bskx.app/PATH` |
-| Instagram | `https://(sub.)instagram.com/PATH` | `https://kkinstagram.com/PATH` |
+| Instagram | `https://(sub.)instagram.com/PATH` | `https://oginstagram.com/PATH` |
 | Twitter | `https://(sub.)twitter.com/PATH` | `https://fxtwitter.com/PATH` |
 | Reddit | `https://(sub.)reddit.com/PATH` | `https://fxreddit.seria.moe/PATH` |
 | FurAffinity | `https://(sub.)furaffinity.net/PATH` | `https://xfuraffinity.net/PATH` |
@@ -86,6 +91,26 @@ check) to be reachable from the public internet at that URL — see
 [Run it yourself with Cloudflare Tunnel](#option-b-run-it-yourself-with-cloudflare-tunnel).
 Leave `FACEBOOK_PROXY_BASE_URL` unset to keep posting the raw CDN URL instead.
 
+### Webhook repost (optional)
+
+By default the bot fixes a link by suppressing the original message's embed and replying as
+itself. Enable webhook repost (`/webhook-repost`, or the admin panel's "Webhook repost" column)
+and it instead **deletes** the original message and **reposts** its content — fixed link,
+attachments, and all — through a per-channel webhook set to the original author's display name
+and avatar. In the channel it looks like the same person posted the fixed link directly, no bot
+involvement visible.
+
+Trade-offs worth knowing before turning this on:
+
+- Needs the **Manage Webhooks** permission in a channel to create/find its webhook there. Without
+  it, that message just falls back to a normal reply instead — this never blocks a fix from
+  happening, it only changes how it's delivered.
+- A webhook message can't carry reply/thread context, so if the original was itself a reply to
+  another message, that context is lost.
+- Any reactions already on the original before conversion are lost (the repost is a new message).
+- It's per-server, off by default, and only affects *automatic* conversions — `/convert` is
+  unaffected either way.
+
 ### Spam protection
 
 Hijacked accounts typically blast the **same message across many channels within seconds**.
@@ -122,6 +147,7 @@ otherwise globally, which can take up to ~1h to appear).
 | `/ping` | everyone | Bot round-trip + WebSocket latency. |
 | `/toggle` | Manage Server | Enable/disable automatic conversion in the current server. |
 | `/ignore-channel add\|remove\|list` | Manage Server | Exclude specific channels from automatic conversion (`/convert` still works there). |
+| `/webhook-repost` | Manage Server | Enable/disable reposting fixed links as the original author via webhook instead of a bot reply. |
 | `/fixer set\|reset\|list` | Manage Server | Choose which alternate embed-fixing host converts a platform's links in this server. |
 | `/roll <dice>` | everyone (allowed channels only) | Roll dice, e.g. `1d100` or `2d6+3`. Disabled everywhere until an admin allows a channel. |
 | `/roll-channel add\|remove\|list` | Manage Server | Manage which channels `/roll` is allowed in. |
@@ -144,7 +170,10 @@ In the **OAuth2 → URL Generator** tab:
 - **Scopes:** `bot`, `applications.commands` *(the second is required for slash commands)*
 - **Bot Permissions:** Read Messages / View Channels, Send Messages,
   Manage Messages *(to suppress embeds and delete spam)*, Embed Links,
-  Moderate Members *(to time out spammers — see [Spam protection](#spam-protection))*
+  Add Reactions *(for the 🗑️ delete affordance on its own messages)*,
+  Moderate Members *(to time out spammers — see [Spam protection](#spam-protection))*,
+  Manage Webhooks *(only if using [webhook repost](#webhook-repost-optional) — falls back to a
+  normal reply wherever it's missing)*
 
 Open the generated URL to invite the bot to your server.
 
@@ -217,12 +246,13 @@ serverless tier, HTTP-based):
 ## Admin panel
 
 A password-protected web panel at `/admin` for managing the bot without touching
-Discord or the host machine directly: per-guild enable/disable, roll-channel
-management, ignored-channel management, and fixer-host selection (the same
-things `/toggle`, `/roll-channel`, `/ignore-channel`, and `/fixer` do — each
-guild's "Manage fixers" panel shows every configurable platform as a row of
-clickable host options), a `.env` editor, a manual deploy trigger with a live
-deploy log, and pm2 process controls (status, memory/CPU,
+Discord or the host machine directly: per-guild enable/disable, webhook-repost
+toggling, roll-channel management, ignored-channel management, and fixer-host
+selection (the same things `/toggle`, `/webhook-repost`, `/roll-channel`,
+`/ignore-channel`, and `/fixer` do — each guild's "Manage fixers" panel shows
+every configurable platform as a row of clickable host options), a `.env`
+editor, a manual deploy trigger with a live deploy log, and pm2 process
+controls (status, memory/CPU,
 restart count, Start/Stop/Restart, log tail). Built with React (frontend) and
 Express (backend, mounted alongside the existing health-check server).
 

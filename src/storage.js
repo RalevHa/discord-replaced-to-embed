@@ -15,6 +15,7 @@ const KEYS = {
   passkeys: 'admin_passkeys', // hash: credential ID -> JSON WebAuthn credential record
   fixerOverrides: 'fixer_overrides', // hash: guild ID -> JSON { label: host }
   ignoredChannels: 'ignored_channels', // hash: guild ID -> JSON array of channel IDs to skip auto-conversion in
+  webhookRepost: 'webhook_repost_guilds', // Set of guild IDs with webhook-repost mode enabled
 };
 
 /**
@@ -45,6 +46,9 @@ function createStorage(config) {
   const fixerOverridesByGuild = new Map();
   // In-memory cache of channels that skip auto-conversion: guild ID -> Set of channel IDs.
   const ignoredChannelsByGuild = new Map();
+  // In-memory cache of guilds with webhook-repost mode enabled (always used for fast reads,
+  // same as disabledGuilds above).
+  const webhookRepostGuilds = new Set();
 
   return {
     /** Whether state will survive a restart. */
@@ -56,6 +60,9 @@ function createStorage(config) {
       try {
         const members = await redis.smembers(KEYS.disabled);
         for (const id of members) disabledGuilds.add(id);
+
+        const webhookRepostMembers = await redis.smembers(KEYS.webhookRepost);
+        for (const id of webhookRepostMembers) webhookRepostGuilds.add(id);
 
         // hgetall already JSON-decodes each hash value (the @upstash/redis client's
         // automatic deserialization) — channelIds is already the array addRollChannel
@@ -123,6 +130,20 @@ function createStorage(config) {
       if (!redis) return;
       if (disabled) await redis.sadd(KEYS.disabled, id);
       else await redis.srem(KEYS.disabled, id);
+    },
+
+    /** Synchronous, cache-backed — safe to call on every message. */
+    isWebhookRepostEnabled(id) {
+      return webhookRepostGuilds.has(id);
+    },
+
+    /** Persist webhook-repost mode and update the cache. */
+    async setWebhookRepostEnabled(id, enabled) {
+      if (enabled) webhookRepostGuilds.add(id);
+      else webhookRepostGuilds.delete(id);
+      if (!redis) return;
+      if (enabled) await redis.sadd(KEYS.webhookRepost, id);
+      else await redis.srem(KEYS.webhookRepost, id);
     },
 
     /** Synchronous, cache-backed — safe to call on every /roll. */

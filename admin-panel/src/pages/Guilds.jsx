@@ -154,6 +154,11 @@ export default function Guilds() {
     reload();
   }
 
+  async function toggleWebhookRepost(guild) {
+    await api.setGuildWebhookRepost(guild.id, !guild.webhookRepostEnabled);
+    reload();
+  }
+
   if (error) return <p className="error">{error}</p>;
   if (!guilds) return <p className="loading">Loading…</p>;
 
@@ -165,6 +170,7 @@ export default function Guilds() {
           <tr>
             <th>Server</th>
             <th>Link conversion</th>
+            <th>Webhook repost</th>
             <th>Roll channels</th>
             <th>Ignored channels</th>
             <th></th>
@@ -177,6 +183,11 @@ export default function Guilds() {
                 <td>{g.name}</td>
                 <td>
                   <button onClick={() => toggle(g)}>{g.disabled ? 'Enable' : 'Disable'}</button>
+                </td>
+                <td>
+                  <button onClick={() => toggleWebhookRepost(g)}>
+                    {g.webhookRepostEnabled ? 'Disable' : 'Enable'}
+                  </button>
                 </td>
                 <td>{g.rollChannelCount}</td>
                 <td>{g.ignoredChannelCount}</td>
@@ -194,21 +205,21 @@ export default function Guilds() {
               </tr>
               {expanded === g.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <RollChannels guildId={g.id} />
                   </td>
                 </tr>
               )}
               {expandedIgnored === g.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <IgnoredChannels guildId={g.id} />
                   </td>
                 </tr>
               )}
               {expandedFixers === g.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <FixerPanel guildId={g.id} />
                   </td>
                 </tr>

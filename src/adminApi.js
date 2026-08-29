@@ -82,6 +82,7 @@ function createAdminApp(ctx) {
       disabled: storage.isGuildDisabled(g.id),
       rollChannelCount: storage.getRollChannels(g.id).length,
       ignoredChannelCount: storage.getIgnoredChannels(g.id).length,
+      webhookRepostEnabled: storage.isWebhookRepostEnabled(g.id),
     }));
     res.json(guilds);
   });
@@ -89,7 +90,12 @@ function createAdminApp(ctx) {
   authed.patch('/guilds/:id', async (req, res) => {
     const guild = client.guilds.cache.get(req.params.id);
     if (!guild) return res.status(404).json({ error: 'Unknown guild.' });
-    await storage.setGuildDisabled(guild.id, Boolean(req.body?.disabled));
+    if ('disabled' in (req.body || {})) {
+      await storage.setGuildDisabled(guild.id, Boolean(req.body.disabled));
+    }
+    if ('webhookRepostEnabled' in (req.body || {})) {
+      await storage.setWebhookRepostEnabled(guild.id, Boolean(req.body.webhookRepostEnabled));
+    }
     res.json({ ok: true });
   });
 
