@@ -153,3 +153,21 @@ test('isWebhookRepostEnabled is false until enabled, and toggles back off', asyn
   await storage.setWebhookRepostEnabled('guild-1', false);
   assert.equal(storage.isWebhookRepostEnabled('guild-1'), false);
 });
+
+test('trackRepostAuthor records the impersonated author for a repost message', async () => {
+  const storage = memStorage();
+  await storage.trackRepostAuthor('repost-1', 'author-1');
+  assert.equal(storage.getRepostAuthorId('repost-1'), 'author-1');
+});
+
+test('untrackRepostAuthor removes it', async () => {
+  const storage = memStorage();
+  await storage.trackRepostAuthor('repost-2', 'author-2');
+  await storage.untrackRepostAuthor('repost-2');
+  assert.equal(storage.getRepostAuthorId('repost-2'), undefined);
+});
+
+test('getRepostAuthorId on an untracked message id is undefined', () => {
+  const storage = memStorage();
+  assert.equal(storage.getRepostAuthorId('never-tracked'), undefined);
+});
