@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { parseDice, rollDice } = require('../dice');
+const { requireGuild } = require('./guards');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,10 +11,7 @@ module.exports = {
     ),
 
   async execute(interaction, { storage }) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: 'This command only works in a server.', ephemeral: true });
-      return;
-    }
+    if (!(await requireGuild(interaction))) return;
 
     if (!storage.isRollChannelAllowed(interaction.guild.id, interaction.channel.id)) {
       await interaction.reply({

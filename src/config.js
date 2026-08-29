@@ -12,6 +12,10 @@ module.exports = Object.freeze({
   // Discord bot token (required to start).
   token: process.env.DISCORD_BOT_TOKEN,
 
+  // Whether this is a production deploy — used to gate the admin session
+  // cookie's `secure` flag (see src/adminAuth.js).
+  isProduction: process.env.NODE_ENV === 'production',
+
   // Comma-separated server (guild) IDs the bot acts in. Empty = all servers.
   allowedGuilds: idList(process.env.ALLOWED_GUILD_IDS),
 

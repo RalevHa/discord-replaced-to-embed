@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { FIXER_OPTIONS, isValidFixerHost } = require('../rules');
+const { requireGuild } = require('./guards');
 
 const CONFIGURABLE_PLATFORMS = Object.keys(FIXER_OPTIONS);
 const platformChoices = CONFIGURABLE_PLATFORMS.map((label) => ({ name: label, value: label }));
@@ -31,10 +32,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('list').setDescription('List configurable platforms and their fixer hosts')),
 
   async execute(interaction, { storage }) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: 'This command only works in a server.', ephemeral: true });
-      return;
-    }
+    if (!(await requireGuild(interaction))) return;
 
     const guildId = interaction.guild.id;
     const sub = interaction.options.getSubcommand();
