@@ -81,6 +81,7 @@ function createAdminApp(ctx) {
       memberCount: g.memberCount,
       disabled: storage.isGuildDisabled(g.id),
       rollChannelCount: storage.getRollChannels(g.id).length,
+      ignoredChannelCount: storage.getIgnoredChannels(g.id).length,
     }));
     res.json(guilds);
   });
@@ -119,6 +120,27 @@ function createAdminApp(ctx) {
 
   authed.delete('/guilds/:id/roll-channels/:channelId', async (req, res) => {
     await storage.removeRollChannel(req.params.id, req.params.channelId);
+    res.json({ ok: true });
+  });
+
+  authed.get('/guilds/:id/ignored-channels', (req, res) => {
+    const guild = client.guilds.cache.get(req.params.id);
+    if (!guild) return res.status(404).json({ error: 'Unknown guild.' });
+    const ids = storage.getIgnoredChannels(guild.id);
+    res.json(ids.map((id) => ({ id, name: guild.channels.cache.get(id)?.name || id })));
+  });
+
+  authed.post('/guilds/:id/ignored-channels', async (req, res) => {
+    const guild = client.guilds.cache.get(req.params.id);
+    if (!guild) return res.status(404).json({ error: 'Unknown guild.' });
+    const channelId = req.body?.channelId;
+    if (!channelId) return res.status(400).json({ error: 'channelId is required.' });
+    await storage.addIgnoredChannel(guild.id, channelId);
+    res.json({ ok: true });
+  });
+
+  authed.delete('/guilds/:id/ignored-channels/:channelId', async (req, res) => {
+    await storage.removeIgnoredChannel(req.params.id, req.params.channelId);
     res.json({ ok: true });
   });
 

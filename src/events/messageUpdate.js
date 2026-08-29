@@ -25,6 +25,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   if (oldMessage.content === message.content) return;
   if (!isHandleableMessage(message, config)) return;
   if (storage.isGuildDisabled(message.guild.id)) return;
+  if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
   const existingReplyId = replyTracker.get(message.id);
   const existingReply = existingReplyId

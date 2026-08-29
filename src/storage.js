@@ -14,6 +14,7 @@ const KEYS = {
   rollChannels: 'roll_channels', // hash: guild ID -> JSON array of allowed channel IDs
   passkeys: 'admin_passkeys', // hash: credential ID -> JSON WebAuthn credential record
   fixerOverrides: 'fixer_overrides', // hash: guild ID -> JSON { label: host }
+  ignoredChannels: 'ignored_channels', // hash: guild ID -> JSON array of channel IDs to skip auto-conversion in
 };
 
 /**
@@ -42,6 +43,8 @@ function createStorage(config) {
   const passkeysById = new Map();
   // In-memory cache of per-guild fixer-host overrides: guild ID -> { label: host }.
   const fixerOverridesByGuild = new Map();
+  // In-memory cache of channels that skip auto-conversion: guild ID -> Set of channel IDs.
+  const ignoredChannelsByGuild = new Map();
 
   return {
     /** Whether state will survive a restart. */
@@ -87,6 +90,16 @@ function createStorage(config) {
             fixerOverridesByGuild.set(guildId, overrides);
           } else {
             console.error(`Skipping malformed fixer-overrides entry for guild ${guildId}:`, overrides);
+          }
+        }
+
+        // Same hgetall-already-deserializes caveat as rollChannels above.
+        const ignoredChannels = await redis.hgetall(KEYS.ignoredChannels);
+        for (const [guildId, channelIds] of Object.entries(ignoredChannels || {})) {
+          if (Array.isArray(channelIds)) {
+            ignoredChannelsByGuild.set(guildId, new Set(channelIds));
+          } else {
+            console.error(`Skipping malformed ignored-channels entry for guild ${guildId}:`, channelIds);
           }
         }
 
@@ -142,6 +155,38 @@ function createStorage(config) {
       if (!redis) return;
       if (set.size) await redis.hset(KEYS.rollChannels, { [guildId]: JSON.stringify([...set]) });
       else await redis.hdel(KEYS.rollChannels, guildId);
+    },
+
+    /** Synchronous, cache-backed — safe to call on every message. */
+    isChannelIgnored(guildId, channelId) {
+      return Boolean(ignoredChannelsByGuild.get(guildId)?.has(channelId));
+    },
+
+    /** Channel IDs currently skipping auto-conversion, for a guild (for /ignore-channel list). */
+    getIgnoredChannels(guildId) {
+      return [...(ignoredChannelsByGuild.get(guildId) || [])];
+    },
+
+    /** Add a channel to a guild's ignore list and persist it. */
+    async addIgnoredChannel(guildId, channelId) {
+      let set = ignoredChannelsByGuild.get(guildId);
+      if (!set) {
+        set = new Set();
+        ignoredChannelsByGuild.set(guildId, set);
+      }
+      set.add(channelId);
+      if (!redis) return;
+      await redis.hset(KEYS.ignoredChannels, { [guildId]: JSON.stringify([...set]) });
+    },
+
+    /** Remove a channel from a guild's ignore list and persist it. */
+    async removeIgnoredChannel(guildId, channelId) {
+      const set = ignoredChannelsByGuild.get(guildId);
+      if (!set) return;
+      set.delete(channelId);
+      if (!redis) return;
+      if (set.size) await redis.hset(KEYS.ignoredChannels, { [guildId]: JSON.stringify([...set]) });
+      else await redis.hdel(KEYS.ignoredChannels, guildId);
     },
 
     /** A guild's fixer-host overrides: { label: host }. Empty object if none set. */
