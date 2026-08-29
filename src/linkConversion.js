@@ -20,10 +20,12 @@ async function buildConversion(content, config, overrides = {}) {
     : [];
 
   if (!TRIGGER.test(content) && facebookMatches.length === 0) {
-    return { replaced: [], textLinks: [], facebookEmbeds: [] };
+    return { replaced: [], textLinks: [], facebookEmbeds: [], newText: content, facebookVideoLinks: [] };
   }
 
-  const { replaced } = TRIGGER.test(content) ? applyReplacements(content, overrides) : { replaced: [] };
+  const { newText, replaced } = TRIGGER.test(content)
+    ? applyReplacements(content, overrides)
+    : { newText: content, replaced: [] };
 
   const facebookEmbeds = [];
   const facebookVideoLinks = [];
@@ -68,7 +70,14 @@ async function buildConversion(content, config, overrides = {}) {
     .map((r) => r.converted)
     .concat(facebookVideoLinks);
 
-  return { replaced, textLinks, facebookEmbeds };
+  // newText (used only for webhook-repost content, see buildWebhookContent) is
+  // the whole original message re-sent as fresh content — unlike a normal reply,
+  // which never includes the original's surrounding text at all, so a raw
+  // Facebook URL sitting in it would otherwise get a second, broken auto-embed
+  // from Discord right alongside the real one built above.
+  const webhookSafeText = facebookMatches.length ? facebook.suppressFacebookLinksInText(newText) : newText;
+
+  return { replaced, textLinks, facebookEmbeds, newText: webhookSafeText, facebookVideoLinks };
 }
 
 /** Payload for a brand-new reply — omits empty keys since Discord rejects a
@@ -79,6 +88,13 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
     ...(facebookEmbeds.length ? { embeds: facebookEmbeds } : {}),
     allowedMentions: { repliedUser: false },
   };
+}
+
+/** Webhook-repost content: the *whole* original message with its link(s)
+ * swapped in place (unlike buildReplyPayload's link-only content), plus any
+ * Facebook video links appended the same way a normal reply would. */
+function buildWebhookContent(newText, facebookVideoLinks) {
+  return [newText, ...facebookVideoLinks].join('\n');
 }
 
 // Shared guard: skip bot messages, DMs, and guilds outside the allowlist.
@@ -92,6 +108,7 @@ function isHandleableMessage(message, config) {
 module.exports = {
   buildConversion,
   buildReplyPayload,
+  buildWebhookContent,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,

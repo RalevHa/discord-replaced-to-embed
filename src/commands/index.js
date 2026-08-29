@@ -8,6 +8,7 @@ const list = [
   require('./sources'),
   require('./toggle'),
   require('./ignoreChannel'),
+  require('./webhookRepost'),
   require('./fixer'),
   require('./stats'),
   require('./roll'),

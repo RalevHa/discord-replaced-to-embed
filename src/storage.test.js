@@ -144,3 +144,12 @@ test('removeIgnoredChannel on a guild with no ignored channels is a no-op', asyn
   await assert.doesNotReject(() => storage.removeIgnoredChannel('guild-1', 'chan-1'));
   assert.deepEqual(storage.getIgnoredChannels('guild-1'), []);
 });
+
+test('isWebhookRepostEnabled is false until enabled, and toggles back off', async () => {
+  const storage = memStorage();
+  assert.equal(storage.isWebhookRepostEnabled('guild-1'), false);
+  await storage.setWebhookRepostEnabled('guild-1', true);
+  assert.equal(storage.isWebhookRepostEnabled('guild-1'), true);
+  await storage.setWebhookRepostEnabled('guild-1', false);
+  assert.equal(storage.isWebhookRepostEnabled('guild-1'), false);
+});

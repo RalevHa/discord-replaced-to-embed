@@ -19,6 +19,8 @@ export const api = {
   guilds: () => request('/guilds'),
   setGuildDisabled: (id, disabled) =>
     request(`/guilds/${id}`, { method: 'PATCH', body: JSON.stringify({ disabled }) }),
+  setGuildWebhookRepost: (id, webhookRepostEnabled) =>
+    request(`/guilds/${id}`, { method: 'PATCH', body: JSON.stringify({ webhookRepostEnabled }) }),
   channels: (id) => request(`/guilds/${id}/channels`),
   rollChannels: (id) => request(`/guilds/${id}/roll-channels`),
   addRollChannel: (id, channelId) =>
