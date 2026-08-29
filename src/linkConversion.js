@@ -29,12 +29,20 @@ async function buildConversion(content, config, overrides = {}) {
 
   const facebookEmbeds = [];
   const facebookVideoLinks = [];
+  // Spoilered Facebook links only get a plain passthrough (see below) — that's
+  // genuinely new content for a reply (the original message's own copy has its
+  // embeds suppressed), but NOT for webhook-repost content, whose newText
+  // already contains that same spoilered link verbatim (see webhookSafeText
+  // below) — appending it there too would just print it twice. Kept separate
+  // from facebookVideoLinks (which webhook mode DOES want — a real video/CDN
+  // link is new content in both modes) so buildWebhookContent can skip these.
+  const facebookSpoilerLinks = [];
   // Cap per-message to avoid one message triggering a burst of outbound fetches.
   for (const { url, spoiler } of facebookMatches.slice(0, 4)) {
     if (spoiler) {
       // Spoilered like any other link (see rules.js) — skip the fetch/embed
       // entirely so nothing (image, description) leaks before it's revealed.
-      facebookVideoLinks.push(`||${url}||`);
+      facebookSpoilerLinks.push(`||${url}||`);
       replaced.push({ label: 'Facebook' });
       continue;
     }
@@ -68,7 +76,8 @@ async function buildConversion(content, config, overrides = {}) {
   const textLinks = replaced
     .filter((r) => r.converted)
     .map((r) => r.converted)
-    .concat(facebookVideoLinks);
+    .concat(facebookVideoLinks)
+    .concat(facebookSpoilerLinks);
 
   // newText (used only for webhook-repost content, see buildWebhookContent) is
   // the whole original message re-sent as fresh content — unlike a normal reply,
@@ -92,7 +101,9 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
 
 /** Webhook-repost content: the *whole* original message with its link(s)
  * swapped in place (unlike buildReplyPayload's link-only content), plus any
- * Facebook video links appended the same way a normal reply would. */
+ * genuinely new Facebook video/CDN links appended — NOT the spoiler-passthrough
+ * entries buildConversion keeps separate, since those already appear verbatim
+ * (suppressed) inside newText and would otherwise print twice. */
 function buildWebhookContent(newText, facebookVideoLinks) {
   return [newText, ...facebookVideoLinks].join('\n');
 }

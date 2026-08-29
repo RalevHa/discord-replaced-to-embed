@@ -53,6 +53,16 @@ the actual mechanism.
   The general lesson: when a feature changes *how much of the surrounding content* gets resent,
   re-check every other special-cased link type for text that was previously invisible to the
   user (suppressed on a message being deleted anyway) but is now live in a fresh message.
+- **The fix above wasn't the whole story — a "genuinely new content" array can carry entries
+  that are actually just passthrough of something already in the resent text.** A spoilered
+  Facebook link's only "conversion" is a plain `||url||` passthrough line, pushed into the same
+  array as real new content (video/CDN links) — fine for a normal reply (the passthrough IS the
+  reply's only content), but in webhook mode that same array gets appended *after* the full
+  original text, which already contains that spoilered link (now wrapped per the point above) —
+  appending the passthrough again prints the same link twice. Caught by the user testing a
+  message that was *only* the spoilered link (no other link to mask it). Fixed by splitting
+  "genuinely new" entries from "already represented elsewhere" ones into two separate arrays at
+  the source, rather than trying to filter one shared array after the fact.
 - Re-sending the original's attachments works by passing the `Attachment` objects straight
   through in `files` — discord.js resolves them by URL, no manual download/re-upload needed.
 
