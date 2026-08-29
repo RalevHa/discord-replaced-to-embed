@@ -12,7 +12,7 @@ module.exports = {
       ? '\n• **Facebook** — `facebook.com` (native embed, not a link rewrite)'
       : '';
     await interaction.reply({
-      content: `I can convert links from these platforms into embeddable versions:\n${list}${fbLine}`,
+      content: `I can convert links from these platforms into embeddable versions:\n${list}${fbLine}\n\nSome platforms support alternate fixer hosts — see \`/fixer list\`.`,
       ephemeral: true,
     });
   },

@@ -8,23 +8,55 @@ const RULES = [
   ['X (Twitter)',       'x.com',         'fixupx.com'],
   ['Pixiv',             'pixiv.net',     'www.phixiv.net'],
   ['Bluesky',           'bsky.app',      'bskx.app'],
-  ['Instagram',         'instagram.com', 'kkinstagram.com'],
+  ['Instagram',         'instagram.com', 'oginstagram.com'],
+  ['Twitter',           'twitter.com',   'fxtwitter.com'],
+  ['Reddit',            'reddit.com',    'fxreddit.seria.moe'],
+  ['FurAffinity',       'furaffinity.net', 'xfuraffinity.net'],
+  ['Iwara',             'iwara.tv',      'fxiwara.seria.moe'],
+  ['Tumblr',            'tumblr.com',    'tpmblr.com'],
+  ['Threads',           'threads.net',   'fixthreads.seria.moe'],
+  ['Threads',           'threads.com',   'fixthreads.seria.moe'],
+  ['PTT',               'ptt.cc',        'fxptt.seria.moe'],
+  ['DeviantArt',        'deviantart.com', 'fixdeviantart.com'],
 ];
 
 // Facebook is NOT handled here — there's no reliable "fixup" host to redirect to,
 // so it gets a native embed built from scraped Open Graph data instead. See
 // facebook.js and its wiring in events/messageCreate.js.
 
+// Known alternate fixer hosts per label, for platforms with more than one working
+// option (pulled from embed-fixer's own fix-method list). First entry is always
+// that label's current RULES default. A label with no entry here has only one
+// known fixer and isn't configurable via /fixer or the admin panel.
+const FIXER_OPTIONS = {
+  'TikTok':       ['a.tnktok.com', 'tnktok.com', 'tiktokez.com', 'kktiktok.com'],
+  'Bilibili':     ['www.vxbilibili.com', 'fxbilibili.seria.moe', 'bilibiliez.com'],
+  'X (Twitter)':  ['fixupx.com', 'fixvx.com', 'xeezz.com'],
+  'Bluesky':      ['bskx.app', 'fxbsky.app'],
+  'Instagram':    ['oginstagram.com', 'kkinstagram.com', 'eeinstagram.com', 'fxig.seria.moe', 'zzinstagram.com', 'g.embedez.com'],
+  'Twitter':      ['fxtwitter.com', 'vxtwitter.com', 'xeezz.com'],
+  'Reddit':       ['fxreddit.seria.moe', 'vxreddit.com', 'redditez.com'],
+  'FurAffinity':  ['xfuraffinity.net', 'fxraffinity.net'],
+  'Threads':      ['fixthreads.seria.moe', 'vxthreads.net'],
+};
+
+function isValidFixerHost(label, host) {
+  // Object.hasOwn guards against `label` being an inherited Object.prototype
+  // property name (e.g. "__proto__", "constructor", "toString") — those would
+  // otherwise resolve to a non-array value and make `.includes` throw.
+  return Object.hasOwn(FIXER_OPTIONS, label) && FIXER_OPTIONS[label].includes(host);
+}
+
 const URL_RULES = RULES.map(([label, domain, newHost]) => {
   const esc = domain.replace(/\./g, '\\.');
   return {
     label,
+    defaultHost: newHost,
     // Scheme + any leading subdomains optional (so vt./vm./www. all match and get
     // dropped). Lookbehind rejects a preceding domain char so the domain won't match
     // inside a larger one ("x.com" in "fix.com", "tiktok" in "nottiktok.com"). Path
     // stops before "||" so it doesn't swallow a spoiler's closing bar (or text after it).
     pattern: new RegExp(`(?<![\\w.@-])(?:https?://)?(?:[\\w-]+\\.)*?${esc}/((?:(?!\\|\\|)[^\\s])+)`, 'gi'),
-    replace: (match, path) => `https://${newHost}/${path}`,
   };
 });
 
@@ -44,21 +76,28 @@ function isInSpoiler(ranges, start, end) {
 
 /**
  * Applies all URL replacement rules to a given text.
+ * @param {Record<string, string>} [overrides] label -> fixer host, e.g. from a guild's
+ *   /fixer picks. Unknown/invalid hosts are ignored (falls back to the default) so a
+ *   hand-edited or corrupted stored override can't smuggle in an arbitrary redirect host.
  * Returns { newText, replaced: [{ label, original, converted }] }
  */
-function applyReplacements(text) {
+function applyReplacements(text, overrides = {}) {
   let newText = text;
   const replaced = [];
   const spoilerRanges = findSpoilerRanges(text);
 
   for (const rule of URL_RULES) {
+    const host = isValidFixerHost(rule.label, overrides[rule.label])
+      ? overrides[rule.label]
+      : rule.defaultHost;
+
     // Reset lastIndex for global regexes
     rule.pattern.lastIndex = 0;
 
     const matches = [...text.matchAll(rule.pattern)];
     for (const match of matches) {
       const original = match[0];
-      const url = rule.replace(match[0], match[1]);
+      const url = `https://${host}/${match[1]}`;
       const spoiler = isInSpoiler(spoilerRanges, match.index, match.index + original.length);
       const converted = spoiler ? `||${url}||` : url;
 
@@ -71,7 +110,7 @@ function applyReplacements(text) {
     // Apply the replacement globally to newText
     rule.pattern.lastIndex = 0;
     newText = newText.replace(rule.pattern, (m, path, offset) => {
-      const url = rule.replace(m, path);
+      const url = `https://${host}/${path}`;
       return isInSpoiler(spoilerRanges, offset, offset + m.length) ? `||${url}||` : url;
     });
   }
@@ -79,4 +118,12 @@ function applyReplacements(text) {
   return { newText, replaced };
 }
 
-module.exports = { applyReplacements, RULES, TRIGGER, findSpoilerRanges, isInSpoiler };
+module.exports = {
+  applyReplacements,
+  RULES,
+  TRIGGER,
+  FIXER_OPTIONS,
+  isValidFixerHost,
+  findSpoilerRanges,
+  isInSpoiler,
+};

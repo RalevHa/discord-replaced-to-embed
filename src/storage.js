@@ -13,6 +13,7 @@ const KEYS = {
   spamCaught: 'stats:spam_caught', // integer counter of flood incidents handled
   rollChannels: 'roll_channels', // hash: guild ID -> JSON array of allowed channel IDs
   passkeys: 'admin_passkeys', // hash: credential ID -> JSON WebAuthn credential record
+  fixerOverrides: 'fixer_overrides', // hash: guild ID -> JSON { label: host }
 };
 
 /**
@@ -39,6 +40,8 @@ function createStorage(config) {
   // else here — the admin panel's passkey UI already surfaces that tradeoff
   // via storage.persistent.
   const passkeysById = new Map();
+  // In-memory cache of per-guild fixer-host overrides: guild ID -> { label: host }.
+  const fixerOverridesByGuild = new Map();
 
   return {
     /** Whether state will survive a restart. */
@@ -74,6 +77,16 @@ function createStorage(config) {
             passkeysById.set(id, record);
           } else {
             console.error(`Skipping malformed passkey entry ${id}:`, record);
+          }
+        }
+
+        // Same hgetall-already-deserializes caveat as rollChannels above.
+        const fixerOverrides = await redis.hgetall(KEYS.fixerOverrides);
+        for (const [guildId, overrides] of Object.entries(fixerOverrides || {})) {
+          if (overrides && typeof overrides === 'object') {
+            fixerOverridesByGuild.set(guildId, overrides);
+          } else {
+            console.error(`Skipping malformed fixer-overrides entry for guild ${guildId}:`, overrides);
           }
         }
 
@@ -129,6 +142,32 @@ function createStorage(config) {
       if (!redis) return;
       if (set.size) await redis.hset(KEYS.rollChannels, { [guildId]: JSON.stringify([...set]) });
       else await redis.hdel(KEYS.rollChannels, guildId);
+    },
+
+    /** A guild's fixer-host overrides: { label: host }. Empty object if none set. */
+    getFixerOverrides(guildId) {
+      return fixerOverridesByGuild.get(guildId) || {};
+    },
+
+    /** Set one platform's fixer host for a guild and persist it. */
+    async setFixerHost(guildId, label, host) {
+      const overrides = { ...(fixerOverridesByGuild.get(guildId) || {}), [label]: host };
+      fixerOverridesByGuild.set(guildId, overrides);
+      if (!redis) return;
+      await redis.hset(KEYS.fixerOverrides, { [guildId]: JSON.stringify(overrides) });
+    },
+
+    /** Clear one platform's override (revert to its default) and persist it. */
+    async resetFixerHost(guildId, label) {
+      const current = fixerOverridesByGuild.get(guildId);
+      if (!current || !(label in current)) return;
+      const rest = { ...current };
+      delete rest[label];
+      if (Object.keys(rest).length) fixerOverridesByGuild.set(guildId, rest);
+      else fixerOverridesByGuild.delete(guildId);
+      if (!redis) return;
+      if (Object.keys(rest).length) await redis.hset(KEYS.fixerOverrides, { [guildId]: JSON.stringify(rest) });
+      else await redis.hdel(KEYS.fixerOverrides, guildId);
     },
 
     /**

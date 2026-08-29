@@ -3,7 +3,7 @@
 Automatically detects supported social-media links in messages, suppresses their broken
 auto-embed, and replies with embeddable alternatives so they preview properly in Discord.
 
-- 🔗 **Auto-converts** links from 7 platforms (see [Supported Platforms](#supported-platforms))
+- 🔗 **Auto-converts** links from 15 platforms (see [Supported Platforms](#supported-platforms))
 - 📘 **Native Facebook embeds** — scrapes Open Graph data, no self-hosted proxy required
 - 🛡️ **Spam protection** against hijacked accounts blasting the same message across channels
 - 💬 **Slash commands** for manual conversion, stats, and per-server control
@@ -34,6 +34,14 @@ single rule per platform covers every link form.
 | Pixiv | `https://(sub.)pixiv.net/PATH` | `https://www.phixiv.net/PATH` |
 | Bluesky | `https://(sub.)bsky.app/PATH` | `https://bskx.app/PATH` |
 | Instagram | `https://(sub.)instagram.com/PATH` | `https://kkinstagram.com/PATH` |
+| Twitter | `https://(sub.)twitter.com/PATH` | `https://fxtwitter.com/PATH` |
+| Reddit | `https://(sub.)reddit.com/PATH` | `https://fxreddit.seria.moe/PATH` |
+| FurAffinity | `https://(sub.)furaffinity.net/PATH` | `https://xfuraffinity.net/PATH` |
+| Iwara | `https://(sub.)iwara.tv/PATH` | `https://fxiwara.seria.moe/PATH` |
+| Tumblr | `https://(sub.)tumblr.com/PATH` | `https://tpmblr.com/PATH` |
+| Threads | `https://(sub.)threads.net(or .com)/PATH` | `https://fixthreads.seria.moe/PATH` |
+| PTT | `https://(sub.)ptt.cc/PATH` | `https://fxptt.seria.moe/PATH` |
+| DeviantArt | `https://(sub.)deviantart.com/PATH` | `https://fixdeviantart.com/PATH` |
 
 > These embed services are community-run and occasionally rename or go down. If a platform
 > stops embedding, just swap the new host in its rule — see [Adding a platform](#adding-a-platform).
@@ -110,6 +118,7 @@ otherwise globally, which can take up to ~1h to appear).
 | `/stats` | everyone | Conversions counted (all-time with Upstash, else since last restart). |
 | `/ping` | everyone | Bot round-trip + WebSocket latency. |
 | `/toggle` | Manage Server | Enable/disable automatic conversion in the current server. |
+| `/fixer set\|reset\|list` | Manage Server | Choose which alternate embed-fixing host converts a platform's links in this server. |
 | `/roll <dice>` | everyone (allowed channels only) | Roll dice, e.g. `1d100` or `2d6+3`. Disabled everywhere until an admin allows a channel. |
 | `/roll-channel add\|remove\|list` | Manage Server | Manage which channels `/roll` is allowed in. |
 | `/help` | everyone | What the bot does and the command list. |
@@ -204,12 +213,13 @@ serverless tier, HTTP-based):
 ## Admin panel
 
 A password-protected web panel at `/admin` for managing the bot without touching
-Discord or the host machine directly: per-guild enable/disable and roll-channel
-management (the same things `/toggle` and `/roll-channel` do), a `.env` editor, a
-manual deploy trigger with a live deploy log, and pm2 process controls (status,
-memory/CPU, restart count, Start/Stop/Restart, log tail). Built with React
-(frontend) and Express (backend, mounted alongside the existing health-check
-server).
+Discord or the host machine directly: per-guild enable/disable, roll-channel
+management, and fixer-host selection (the same things `/toggle`, `/roll-channel`,
+and `/fixer` do — each guild's "Manage fixers" panel shows every configurable
+platform as a row of clickable host options), a `.env` editor, a manual deploy
+trigger with a live deploy log, and pm2 process controls (status, memory/CPU,
+restart count, Start/Stop/Restart, log tail). Built with React (frontend) and
+Express (backend, mounted alongside the existing health-check server).
 
 Enable it by setting `ADMIN_PASSWORD` and `SESSION_SECRET` in `.env` (see
 `.env.example`) — it 404s entirely until both are set. See [Install and
@@ -356,6 +366,10 @@ const RULES = [
 
 Just list the bare domain — subdomains (`www.`, `vt.`, `m.`, …) are handled automatically,
 so there's no ordering requirement.
+
+If a platform has more than one working fixer host, add it to `FIXER_OPTIONS` in the same file
+— `{ [label]: [defaultHost, ...alternateHosts] }` — so servers can pick one via `/fixer` or the
+admin panel's "Manage fixers" panel instead of being stuck with whichever host is first.
 
 ### Adding a slash command
 

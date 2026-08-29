@@ -26,6 +26,14 @@ const cases = [
                 'https://www.phixiv.net/en/artworks/123', ['Pixiv']],
   ['bluesky',   'https://bsky.app/profile/user/post/abc',
                 'https://bskx.app/profile/user/post/abc', ['Bluesky']],
+  ['twitter (distinct from x.com)', 'https://twitter.com/user/status/123',
+                'https://fxtwitter.com/user/status/123', ['Twitter']],
+  ['reddit',    'https://www.reddit.com/r/aww/comments/abc/title',
+                'https://fxreddit.seria.moe/r/aww/comments/abc/title', ['Reddit']],
+  ['threads .net', 'https://www.threads.net/@user/post/abc',
+                'https://fixthreads.seria.moe/@user/post/abc', ['Threads']],
+  ['threads .com', 'https://www.threads.com/@user/post/abc',
+                'https://fixthreads.seria.moe/@user/post/abc', ['Threads']],
 
   // --- must NOT match ---
   ['lookalike domain', 'no nottiktok.com/should/not/match here',
@@ -90,4 +98,19 @@ test('TRIGGER early-exit matches supported domains and skips others', () => {
 // rewrite — see facebook.test.js.
 test('rules.js does not rewrite Facebook links (handled by facebook.js instead)', () => {
   assert.equal(applyReplacements('https://www.facebook.com/user/posts/123').replaced.length, 0);
+});
+
+test('a per-guild override picks an alternate fixer host', () => {
+  const { replaced } = applyReplacements('https://instagram.com/p/abc', { Instagram: 'kkinstagram.com' });
+  assert.equal(replaced[0].converted, 'https://kkinstagram.com/p/abc');
+});
+
+test('an unrecognized override is ignored, falling back to the default host', () => {
+  const { replaced } = applyReplacements('https://instagram.com/p/abc', { Instagram: 'evil.example.com' });
+  assert.equal(replaced[0].converted, 'https://oginstagram.com/p/abc');
+});
+
+test('with no override, Instagram now defaults to oginstagram.com', () => {
+  const { replaced } = applyReplacements('https://instagram.com/p/abc');
+  assert.equal(replaced[0].converted, 'https://oginstagram.com/p/abc');
 });

@@ -90,3 +90,34 @@ test('removePasskey removes it from both listPasskeys and hasPasskeys', async ()
   assert.equal(storage.hasPasskeys(), false);
   assert.deepEqual(storage.listPasskeys(), []);
 });
+
+test('getFixerOverrides is empty until a fixer host is set', async () => {
+  const storage = memStorage();
+  assert.deepEqual(storage.getFixerOverrides('guild-1'), {});
+  await storage.setFixerHost('guild-1', 'Instagram', 'kkinstagram.com');
+  assert.deepEqual(storage.getFixerOverrides('guild-1'), { Instagram: 'kkinstagram.com' });
+});
+
+test('setFixerHost for a second platform keeps the first guild override intact', async () => {
+  const storage = memStorage();
+  await storage.setFixerHost('guild-1', 'Instagram', 'kkinstagram.com');
+  await storage.setFixerHost('guild-1', 'Reddit', 'vxreddit.com');
+  assert.deepEqual(storage.getFixerOverrides('guild-1'), {
+    Instagram: 'kkinstagram.com',
+    Reddit: 'vxreddit.com',
+  });
+});
+
+test('resetFixerHost removes just the one platform override', async () => {
+  const storage = memStorage();
+  await storage.setFixerHost('guild-1', 'Instagram', 'kkinstagram.com');
+  await storage.setFixerHost('guild-1', 'Reddit', 'vxreddit.com');
+  await storage.resetFixerHost('guild-1', 'Instagram');
+  assert.deepEqual(storage.getFixerOverrides('guild-1'), { Reddit: 'vxreddit.com' });
+});
+
+test('resetFixerHost on an unset platform is a no-op', async () => {
+  const storage = memStorage();
+  await assert.doesNotReject(() => storage.resetFixerHost('guild-1', 'Instagram'));
+  assert.deepEqual(storage.getFixerOverrides('guild-1'), {});
+});

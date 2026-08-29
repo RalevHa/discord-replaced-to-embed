@@ -7,6 +7,7 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { ChannelType } = require('discord.js');
+const { FIXER_OPTIONS, isValidFixerHost } = require('./rules');
 const { createAdminAuth } = require('./adminAuth');
 const { createPasskeyAuth } = require('./passkeyAuth');
 const dashboard = require('./dashboard');
@@ -118,6 +119,36 @@ function createAdminApp(ctx) {
 
   authed.delete('/guilds/:id/roll-channels/:channelId', async (req, res) => {
     await storage.removeRollChannel(req.params.id, req.params.channelId);
+    res.json({ ok: true });
+  });
+
+  authed.get('/guilds/:id/fixers', (req, res) => {
+    const guild = client.guilds.cache.get(req.params.id);
+    if (!guild) return res.status(404).json({ error: 'Unknown guild.' });
+    const overrides = storage.getFixerOverrides(guild.id);
+    const fixers = Object.entries(FIXER_OPTIONS).map(([label, options]) => ({
+      label,
+      host: overrides[label] || options[0],
+      default: options[0],
+      options,
+    }));
+    res.json(fixers);
+  });
+
+  authed.put('/guilds/:id/fixers/:label', async (req, res) => {
+    const guild = client.guilds.cache.get(req.params.id);
+    if (!guild) return res.status(404).json({ error: 'Unknown guild.' });
+    const { label } = req.params;
+    const host = req.body?.host;
+    if (!isValidFixerHost(label, host)) {
+      return res.status(400).json({ error: `${host} isn't a known fixer for ${label}.` });
+    }
+    await storage.setFixerHost(guild.id, label, host);
+    res.json({ ok: true });
+  });
+
+  authed.delete('/guilds/:id/fixers/:label', async (req, res) => {
+    await storage.resetFixerHost(req.params.id, req.params.label);
     res.json({ ok: true });
   });
 

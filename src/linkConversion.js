@@ -12,7 +12,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function buildConversion(content, config) {
+async function buildConversion(content, config, overrides = {}) {
   // Facebook links get a native embed (scraped OG data) instead of a text rewrite —
   // checked independently of TRIGGER since Facebook isn't in RULES.
   const facebookMatches = config.facebookEmbedEnabled
@@ -23,7 +23,7 @@ async function buildConversion(content, config) {
     return { replaced: [], textLinks: [], facebookEmbeds: [] };
   }
 
-  const { replaced } = TRIGGER.test(content) ? applyReplacements(content) : { replaced: [] };
+  const { replaced } = TRIGGER.test(content) ? applyReplacements(content, overrides) : { replaced: [] };
 
   const facebookEmbeds = [];
   const facebookVideoLinks = [];
