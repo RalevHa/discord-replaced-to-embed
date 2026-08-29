@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { requireGuild } = require('./guards');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,10 +33,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('list').setDescription('List channels /roll is allowed in')),
 
   async execute(interaction, { storage }) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: 'This command only works in a server.', ephemeral: true });
-      return;
-    }
+    if (!(await requireGuild(interaction))) return;
 
     const guildId = interaction.guild.id;
     const sub = interaction.options.getSubcommand();

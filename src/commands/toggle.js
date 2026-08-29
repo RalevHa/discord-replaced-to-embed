@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { requireGuild } = require('./guards');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,10 +9,7 @@ module.exports = {
 
   async execute(interaction, { storage }) {
     // Guild-only (the command is hidden in DMs, but guard anyway).
-    if (!interaction.guild) {
-      await interaction.reply({ content: 'This command only works in a server.', ephemeral: true });
-      return;
-    }
+    if (!(await requireGuild(interaction))) return;
 
     const id = interaction.guild.id;
     const nowEnabled = storage.isGuildDisabled(id); // if currently disabled, we're re-enabling
