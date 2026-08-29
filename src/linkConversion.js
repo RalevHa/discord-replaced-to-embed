@@ -28,11 +28,17 @@ async function buildConversion(content, config, overrides = {}) {
     : { newText: content, replaced: [] };
 
   const facebookEmbeds = [];
-  // Real, new-content links — a fixed spoiler redirect or a video/CDN URL,
-  // never the raw original facebook.com URL — so appending these is always
-  // safe in both reply and webhook-repost content: neither is already present
-  // (verbatim) in newText, unlike a plain passthrough of the same link would be.
+  // Genuinely new content in both modes — a video/CDN URL, never the raw
+  // original facebook.com URL — so appending these is always safe: neither
+  // reply nor webhook-repost content already contains it verbatim.
   const facebookVideoLinks = [];
+  // A spoilered link's fixup URL, by contrast, IS already present in webhook
+  // mode's rewritten text (newText swaps it in place, see webhookSafeText
+  // below) — appending it there too would print the same link twice. Kept
+  // separate from facebookVideoLinks so buildWebhookContent can skip these;
+  // a normal reply never resends the original text at all, so it still needs
+  // this as its own content line.
+  const facebookSpoilerLinks = [];
   // Cap per-message to avoid one message triggering a burst of outbound fetches.
   for (const { url, spoiler } of facebookMatches.slice(0, 4)) {
     if (spoiler) {
@@ -42,7 +48,7 @@ async function buildConversion(content, config, overrides = {}) {
       // host instead of the raw facebook.com URL so Discord's own native
       // unfurl handles it, which DOES inherit the spoiler — same "revealed on
       // click" experience every other platform already gets (see facebook.js).
-      facebookVideoLinks.push(`||${facebook.spoilerFixUrl(url)}||`);
+      facebookSpoilerLinks.push(`||${facebook.spoilerFixUrl(url)}||`);
       replaced.push({ label: 'Facebook' });
       continue;
     }
@@ -76,14 +82,19 @@ async function buildConversion(content, config, overrides = {}) {
   const textLinks = replaced
     .filter((r) => r.converted)
     .map((r) => r.converted)
-    .concat(facebookVideoLinks);
+    .concat(facebookVideoLinks)
+    .concat(facebookSpoilerLinks);
 
   // newText (used only for webhook-repost content, see buildWebhookContent) is
   // the whole original message re-sent as fresh content — unlike a normal reply,
-  // which never includes the original's surrounding text at all, so a raw
-  // Facebook URL sitting in it would otherwise get a second, broken auto-embed
-  // from Discord right alongside the real one built above.
-  const webhookSafeText = facebookMatches.length ? facebook.suppressFacebookLinksInText(newText) : newText;
+  // which never includes the original's surrounding text at all, so every
+  // Facebook link in it needs rewriting in place: a spoilered one to the fixup
+  // host (still spoilered, and not appended again — see facebookSpoilerLinks
+  // above), a non-spoilered one wrapped in `<...>` since its richer embed is
+  // built and attached separately.
+  const webhookSafeText = facebookMatches.length
+    ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches)
+    : newText;
 
   return { replaced, textLinks, facebookEmbeds, newText: webhookSafeText, facebookVideoLinks };
 }
@@ -100,9 +111,9 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
 
 /** Webhook-repost content: the *whole* original message with its link(s)
  * swapped in place (unlike buildReplyPayload's link-only content), plus any
- * Facebook video/spoiler-fixup links appended the same way a normal reply
- * would — safe in both, since neither is a passthrough of something already
- * sitting verbatim in newText (see buildConversion). */
+ * genuinely new Facebook video/CDN links appended — NOT the spoiler-fixup
+ * entries buildConversion keeps separate, since those are already rewritten
+ * in place inside newText and would otherwise print twice. */
 function buildWebhookContent(newText, facebookVideoLinks) {
   return [newText, ...facebookVideoLinks].join('\n');
 }
