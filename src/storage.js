@@ -16,6 +16,7 @@ const KEYS = {
   fixerOverrides: 'fixer_overrides', // hash: guild ID -> JSON { label: host }
   ignoredChannels: 'ignored_channels', // hash: guild ID -> JSON array of channel IDs to skip auto-conversion in
   webhookRepost: 'webhook_repost_guilds', // Set of guild IDs with webhook-repost mode enabled
+  repostAuthors: 'webhook_repost_authors', // hash: repost message ID -> JSON-encoded impersonated author ID
 };
 
 /**
@@ -49,6 +50,9 @@ function createStorage(config) {
   // In-memory cache of guilds with webhook-repost mode enabled (always used for fast reads,
   // same as disabledGuilds above).
   const webhookRepostGuilds = new Set();
+  // In-memory cache of repost message ID -> the impersonated author's ID, so
+  // react-to-delete can still resolve a webhook repost after a restart.
+  const repostAuthorByMessage = new Map();
 
   return {
     /** Whether state will survive a restart. */
@@ -110,6 +114,19 @@ function createStorage(config) {
           }
         }
 
+        // Same hgetall-already-deserializes caveat as rollChannels above. Author
+        // IDs are stored JSON-encoded (not raw) so a numeric-looking snowflake
+        // string round-trips as a string instead of hgetall's auto-JSON-parse
+        // silently collapsing it into an imprecise Number.
+        const repostAuthors = await redis.hgetall(KEYS.repostAuthors);
+        for (const [messageId, authorId] of Object.entries(repostAuthors || {})) {
+          if (typeof authorId === 'string') {
+            repostAuthorByMessage.set(messageId, authorId);
+          } else {
+            console.error(`Skipping malformed repost-author entry for message ${messageId}:`, authorId);
+          }
+        }
+
         // Stamp the tracking-start time once (first ever boot).
         await redis.set(KEYS.since, Date.now(), { nx: true });
         console.log(`Loaded ${disabledGuilds.size} disabled guild(s) from Redis.`);
@@ -144,6 +161,25 @@ function createStorage(config) {
       if (!redis) return;
       if (enabled) await redis.sadd(KEYS.webhookRepost, id);
       else await redis.srem(KEYS.webhookRepost, id);
+    },
+
+    /** The impersonated author's id for a tracked webhook-repost message, if any. */
+    getRepostAuthorId(messageId) {
+      return repostAuthorByMessage.get(messageId);
+    },
+
+    /** Record which user a repost message impersonates, and persist it. */
+    async trackRepostAuthor(messageId, authorId) {
+      repostAuthorByMessage.set(messageId, authorId);
+      if (!redis) return;
+      await redis.hset(KEYS.repostAuthors, { [messageId]: JSON.stringify(authorId) });
+    },
+
+    /** Forget a repost, e.g. once react-to-delete has removed it. */
+    async untrackRepostAuthor(messageId) {
+      repostAuthorByMessage.delete(messageId);
+      if (!redis) return;
+      await redis.hdel(KEYS.repostAuthors, messageId);
     },
 
     /** Synchronous, cache-backed — safe to call on every /roll. */

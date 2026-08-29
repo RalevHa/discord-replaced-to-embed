@@ -4,10 +4,10 @@
 // messageDelete.js does when the source message itself is deleted, just
 // triggered by a reaction instead. A webhook repost has no original message
 // left to restore (see webhookRepost.js), so that case just deletes it.
+// Both lookups are storage-backed (src/storage.js) so they survive a restart.
 
 const { PermissionFlagsBits } = require('discord.js');
 const replyTracker = require('../replyTracker');
-const webhookRepost = require('../webhookRepost');
 const { DELETE_EMOJI } = require('../deleteReaction');
 
 module.exports = async function messageReactionAdd(reaction, user, ctx) {
@@ -24,7 +24,14 @@ module.exports = async function messageReactionAdd(reaction, user, ctx) {
   }
 
   const replyMessage = reaction.message;
-  const originalId = replyTracker.getOriginalId(replyMessage.id);
+  // replyTracker is in-memory only and empty after a restart; the bot's own
+  // reply carries a Discord message reference that survives restarts and
+  // points at the same original id. Gated to the bot's own messages only —
+  // any reply-to-a-reply from a regular user also has a `.reference`, and
+  // that must not be treated as one of the bot's tracked messages.
+  const isBotReply = replyMessage.author?.id === ctx.client.user.id;
+  const originalId =
+    replyTracker.getOriginalId(replyMessage.id) || (isBotReply && replyMessage.reference?.messageId);
 
   if (originalId) {
     const original = await replyMessage.channel.messages.fetch(originalId).catch(() => null);
@@ -44,7 +51,7 @@ module.exports = async function messageReactionAdd(reaction, user, ctx) {
     return;
   }
 
-  const repostAuthorId = webhookRepost.getRepostAuthorId(replyMessage.id);
+  const repostAuthorId = ctx.storage.getRepostAuthorId(replyMessage.id);
   if (!repostAuthorId) return; // not one of the bot's tracked messages at all
 
   const member = await replyMessage.guild?.members.fetch(user.id).catch(() => null);
@@ -52,7 +59,7 @@ module.exports = async function messageReactionAdd(reaction, user, ctx) {
   const isMod = Boolean(member?.permissions.has(PermissionFlagsBits.ManageMessages));
   if (!isAuthor && !isMod) return;
 
-  webhookRepost.untrackRepost(replyMessage.id);
+  await ctx.storage.untrackRepostAuthor(replyMessage.id);
   try {
     await replyMessage.delete();
     // Nothing to restore — the true original was already deleted at repost time.

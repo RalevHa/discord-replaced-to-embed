@@ -73,10 +73,11 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
 
     if (storage.isWebhookRepostEnabled(message.guild.id)) {
       try {
-        const repost = await webhookRepost.repost(message, {
-          content: buildWebhookContent(newText, facebookVideoLinks),
-          embeds: facebookEmbeds,
-        });
+        const repost = await webhookRepost.repost(
+          message,
+          { content: buildWebhookContent(newText, facebookVideoLinks), embeds: facebookEmbeds },
+          storage
+        );
         await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
         return;
       } catch (err) {

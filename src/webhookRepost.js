@@ -18,11 +18,6 @@
 // the following attempt creates a fresh one.
 const webhookByChannel = new Map();
 
-// repostId -> the id of the user the webhook message is impersonating, so
-// react-to-delete (events/messageReactionAdd.js) can check "is this the
-// original poster" without an original message left to check `.author` on.
-const authorIdByRepost = new Map();
-
 const WEBHOOK_NAME = 'Link Fixer Repost';
 
 async function getOrCreateWebhook(channel) {
@@ -53,9 +48,10 @@ async function getOrCreateWebhook(channel) {
  * caller falls back to a normal reply in that case.
  * @param {import('discord.js').Message} message
  * @param {{ content: string, embeds: object[] }} payload
+ * @param {import('./storage').Storage} storage
  * @returns {Promise<import('discord.js').Message>} the new webhook message
  */
-async function repost(message, { content, embeds }) {
+async function repost(message, { content, embeds }, storage) {
   const channel = message.channel;
   // Webhooks belong to a text channel, not a thread — a thread's messages are
   // sent through its parent's webhook with `threadId` set.
@@ -91,7 +87,7 @@ async function repost(message, { content, embeds }) {
     throw err;
   }
 
-  trackRepost(sent.id, message.author.id);
+  await storage.trackRepostAuthor(sent.id, message.author.id);
 
   try {
     await message.delete();
@@ -106,20 +102,4 @@ async function repost(message, { content, embeds }) {
   return sent;
 }
 
-/** Record which user a repost message impersonates. Exported (pure, no
- * discord.js dependency) so react-to-delete's lookup can be unit-tested
- * without a real webhook send. */
-function trackRepost(repostId, authorId) {
-  authorIdByRepost.set(repostId, authorId);
-}
-
-/** The impersonated author's id for a tracked repost message, if any. */
-function getRepostAuthorId(messageId) {
-  return authorIdByRepost.get(messageId);
-}
-
-function untrackRepost(messageId) {
-  authorIdByRepost.delete(messageId);
-}
-
-module.exports = { getOrCreateWebhook, repost, trackRepost, getRepostAuthorId, untrackRepost };
+module.exports = { getOrCreateWebhook, repost };

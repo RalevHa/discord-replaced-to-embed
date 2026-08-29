@@ -38,8 +38,18 @@ doesn't warm a message cache).
   react in quick succession across the `await`s in between (message fetch, member fetch) — the
   second delete attempt just throws and gets caught/logged. Not worth a lock for a cosmetic
   double-react case.
+- **`replyTracker.js` is a plain in-memory `Map`, empty after every restart** — a 🗑️ reaction on a
+  reply from before the last restart used to silently do nothing. For a normal bot reply (sent via
+  `message.reply(...)`), the fix doesn't need Redis: the reply is a real Discord reply, so
+  `replyMessage.reference.messageId` already *is* the original id, persisted by Discord itself —
+  fall back to it when `replyTracker` has nothing. **Gate that fallback to the bot's own
+  messages** (`replyMessage.author.id === client.user.id`) — any reply-to-a-reply from a regular
+  user also has a `.reference`, and without the gate it gets misidentified as one of the bot's
+  tracked messages. A webhook repost has no such reference to fall back on at all (see
+  `skills/webhook-identity-repost.md`), so its tracking must go through `storage.js` instead.
 
 ## Related
 
 - `src/events/messageReactionAdd.js`, `src/replyTracker.js` (extended to a bidirectional
-  original-id ⇄ reply-id map so a reaction on the *reply* can find the *original* message).
+  original-id ⇄ reply-id map so a reaction on the *reply* can find the *original* message),
+  `src/storage.js` (webhook-repost's restart-surviving tracking), `skills/webhook-identity-repost.md`.

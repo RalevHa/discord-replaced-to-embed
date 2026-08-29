@@ -39,8 +39,13 @@ the actual mechanism.
   fake reply-quote block; not worth building.
 - **Reactions on the original are lost** — it's a brand-new message id. If the feature also wants
   a "react to undo" affordance (see `skills/discordjs-reactions.md`), track the impersonated
-  author's id in its own small map at send time — there's no live original message left to check
-  `.author.id` against later, unlike a normal reply where the original still exists.
+  author's id at send time — there's no live original message left to check `.author.id` against
+  later, unlike a normal reply where the original still exists. Track it through `storage.js`
+  (a Redis hash when Upstash is configured, else its in-memory fallback), not a plain module-level
+  `Map` — a webhook repost has no message reference either, so unlike a normal reply (which can
+  recover its original id from `message.reference` after a restart, see
+  `skills/discordjs-reactions.md`), a plain in-memory map here means react-to-delete permanently
+  can't resolve any repost made before the last restart.
 - **Reposting the whole original text verbatim can resurrect problems a *different* code path
   already solved.** Here, Facebook links get their own native embed/video-link built separately
   (`src/facebook.js`), and a normal bot reply's content is built *only* from that converted
@@ -74,6 +79,7 @@ the actual mechanism.
 
 ## Related
 
-- `src/webhookRepost.js`, `src/events/messageReactionAdd.js` (the "no original left to check
+- `src/webhookRepost.js`, `src/storage.js` (`trackRepostAuthor`/`getRepostAuthorId`/
+  `untrackRepostAuthor`), `src/events/messageReactionAdd.js` (the "no original left to check
   authorship against" case), `src/facebook.js`'s `suppressFacebookLinksInText`,
   `skills/discordjs-reactions.md`.

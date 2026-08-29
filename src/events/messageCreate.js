@@ -55,10 +55,11 @@ module.exports = async function messageCreate(message, ctx) {
 
   if (storage.isWebhookRepostEnabled(message.guild.id)) {
     try {
-      const repost = await webhookRepost.repost(message, {
-        content: buildWebhookContent(newText, facebookVideoLinks),
-        embeds: facebookEmbeds,
-      });
+      const repost = await webhookRepost.repost(
+        message,
+        { content: buildWebhookContent(newText, facebookVideoLinks), embeds: facebookEmbeds },
+        storage
+      );
       // Best-effort: a one-click delete affordance, not required for the
       // repost itself to have succeeded (needs the Add Reactions permission).
       await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
