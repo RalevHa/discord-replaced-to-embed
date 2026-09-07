@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildConversion, buildWebhookContent } = require('./linkConversion');
+const { buildConversion } = require('./linkConversion');
 
 const baseConfig = { facebookEmbedEnabled: true };
 
@@ -40,31 +40,58 @@ test('Facebook links are left untouched when facebookEmbedEnabled is false', asy
   assert.equal(newText, 'https://fixupx.com/user/status/123 and ||https://www.facebook.com/user/posts/456||');
 });
 
-test('buildWebhookContent joins the rewritten text with any Facebook video links', () => {
-  assert.equal(
-    buildWebhookContent('hello https://fixupx.com/a', ['https://cdn.example/video.mp4']),
-    'hello https://fixupx.com/a\nhttps://cdn.example/video.mp4'
-  );
-  assert.equal(buildWebhookContent('hello https://fixupx.com/a', []), 'hello https://fixupx.com/a');
-});
-
 // Regression test: a message that's ONLY a spoilered Facebook link must not
 // print that link twice in webhook-repost content. The fixup swap happens in
-// place inside newText, so facebookVideoLinks must stay empty (no passthrough
-// copy appended on top) — that passthrough line is reply-mode-only, since a
-// reply never resends the original text at all (see buildConversion).
+// place inside newText, so webhook mode (which posts newText as-is) never
+// needs to append a passthrough copy — that passthrough line is reply-mode-only,
+// since a reply never resends the original text at all (see buildConversion).
 test('a spoilered Facebook link with nothing else is not duplicated in webhook content', async () => {
   const input =
     '||https://www.facebook.com/ExtremeITReview/posts/pfbid026qBBNoXkxnq6rohhZFd4UNwhUE6JK9j7X64dCSxVV9xtjaWMkD58zE6yjrsU6RPil||';
-  const { newText, facebookVideoLinks, textLinks } = await buildConversion(input, baseConfig);
+  const { newText, textLinks } = await buildConversion(input, baseConfig);
   assert.equal(
     newText,
     '||https://facebed.seria.moe/ExtremeITReview/posts/pfbid026qBBNoXkxnq6rohhZFd4UNwhUE6JK9j7X64dCSxVV9xtjaWMkD58zE6yjrsU6RPil||'
   );
-  assert.equal(facebookVideoLinks.length, 0, 'no passthrough entry should reach webhook mode');
-  assert.equal(buildWebhookContent(newText, facebookVideoLinks), newText);
-  assert.equal((buildWebhookContent(newText, facebookVideoLinks).match(/pfbid026q/g) || []).length, 1);
+  assert.equal((newText.match(/pfbid026q/g) || []).length, 1);
   // A normal reply has no resent original text at all, so it still needs the
   // fixup link as its own content.
   assert.deepEqual(textLinks, [newText]);
 });
+
+// Regression test: a video/Reel post must not appear twice in webhook-repost
+// content as both a suppressed <original> link and a separate proxy link line
+// — the proxy link should replace the original in place (see
+// rewriteFacebookLinksForRepost in facebook.js).
+test('a non-spoilered video post link is replaced by its proxy link in place, not duplicated', async () => {
+  const restore = mockFetchVideo();
+  try {
+    const input = 'https://fb.watch/JsAfNOk_Bs/';
+    const { newText, facebookVideoLinks } = await buildConversion(input, {
+      ...baseConfig,
+      facebookProxyBaseUrl: 'https://fb.ralevisdev.com',
+    });
+    assert.equal(newText, facebookVideoLinks[0]);
+    assert.equal((newText.match(/fb\.watch/g) || []).length, 0, 'original link must not remain in the text');
+    assert.equal((newText.match(/fb\.ralevisdev\.com/g) || []).length, 1);
+  } finally {
+    restore();
+  }
+});
+
+function mockFetchVideo() {
+  const original = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (opts && opts.method === 'HEAD') {
+      return { ok: true, headers: { get: () => 'video/mp4' } };
+    }
+    return {
+      ok: true,
+      text: async () =>
+        '<html><head><meta property="og:title" content="A Reel"/><meta property="og:video:secure_url" content="https://video.example/clip.mp4"/></head></html>',
+    };
+  };
+  return () => {
+    global.fetch = original;
+  };
+}

@@ -32,6 +32,11 @@ async function buildConversion(content, config, overrides = {}) {
   // original facebook.com URL — so appending these is always safe: neither
   // reply nor webhook-repost content already contains it verbatim.
   const facebookVideoLinks = [];
+  // Same url -> video/proxy link as facebookVideoLinks, keyed for
+  // rewriteFacebookLinksForRepost so it can swap a video post's link in place
+  // in webhookSafeText below instead of leaving the original merely
+  // suppressed alongside a duplicate video link (see that function's doc).
+  const videoLinkByUrl = new Map();
   // A spoilered link's fixup URL, by contrast, IS already present in webhook
   // mode's rewritten text (newText swaps it in place, see webhookSafeText
   // below) — appending it there too would print the same link twice. Kept
@@ -64,11 +69,11 @@ async function buildConversion(content, config, overrides = {}) {
       // fall back to the raw CDN url when no proxy is configured. facebook.js
       // already verified data.video actually serves video before setting it.
       if (data.video) {
-        facebookVideoLinks.push(
-          config.facebookProxyBaseUrl
-            ? `${config.facebookProxyBaseUrl}/fb/${facebook.encodeProxyPath(url)}`
-            : data.video
-        );
+        const videoLink = config.facebookProxyBaseUrl
+          ? `${config.facebookProxyBaseUrl}/fb/${facebook.encodeProxyPath(url)}`
+          : data.video;
+        facebookVideoLinks.push(videoLink);
+        videoLinkByUrl.set(url, videoLink);
       } else {
         // Discord caps a message at 10 embeds total; multiple multi-photo posts
         // in one message could otherwise exceed that and get the reply rejected.
@@ -85,15 +90,16 @@ async function buildConversion(content, config, overrides = {}) {
     .concat(facebookVideoLinks)
     .concat(facebookSpoilerLinks);
 
-  // newText (used only for webhook-repost content, see buildWebhookContent) is
-  // the whole original message re-sent as fresh content — unlike a normal reply,
-  // which never includes the original's surrounding text at all, so every
-  // Facebook link in it needs rewriting in place: a spoilered one to the fixup
-  // host (still spoilered, and not appended again — see facebookSpoilerLinks
-  // above), a non-spoilered one wrapped in `<...>` since its richer embed is
-  // built and attached separately.
+  // newText (used only for webhook-repost content) is the whole original
+  // message re-sent as fresh content — unlike a normal reply, which never
+  // includes the original's surrounding text at all, so every Facebook link in
+  // it needs rewriting in place: a spoilered one to the fixup host (still
+  // spoilered, and not appended again — see facebookSpoilerLinks above), a
+  // video post's link straight to its video/proxy link (also not appended
+  // again — see videoLinkByUrl above), any other non-spoilered one wrapped in
+  // `<...>` since its richer embed is built and attached separately.
   const webhookSafeText = facebookMatches.length
-    ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches)
+    ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches, videoLinkByUrl)
     : newText;
 
   return { replaced, textLinks, facebookEmbeds, newText: webhookSafeText, facebookVideoLinks };
@@ -109,15 +115,6 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
   };
 }
 
-/** Webhook-repost content: the *whole* original message with its link(s)
- * swapped in place (unlike buildReplyPayload's link-only content), plus any
- * genuinely new Facebook video/CDN links appended — NOT the spoiler-fixup
- * entries buildConversion keeps separate, since those are already rewritten
- * in place inside newText and would otherwise print twice. */
-function buildWebhookContent(newText, facebookVideoLinks) {
-  return [newText, ...facebookVideoLinks].join('\n');
-}
-
 // Shared guard: skip bot messages, DMs, and guilds outside the allowlist.
 // Used by both messageCreate and messageUpdate so the checks can't drift.
 function isHandleableMessage(message, config) {
@@ -129,7 +126,6 @@ function isHandleableMessage(message, config) {
 module.exports = {
   buildConversion,
   buildReplyPayload,
-  buildWebhookContent,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,

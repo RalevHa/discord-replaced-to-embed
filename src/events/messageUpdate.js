@@ -4,7 +4,6 @@
 const {
   buildConversion,
   buildReplyPayload,
-  buildWebhookContent,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,
@@ -34,7 +33,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   const existingReply = existingReplyId
     ? await message.channel.messages.fetch(existingReplyId).catch(() => null)
     : null;
-  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, newText } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -75,7 +74,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       try {
         const repost = await webhookRepost.repost(
           message,
-          { content: buildWebhookContent(newText, facebookVideoLinks), embeds: facebookEmbeds },
+          { content: newText, embeds: facebookEmbeds },
           storage
         );
         await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));

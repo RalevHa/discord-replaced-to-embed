@@ -58,21 +58,28 @@ function spoilerFixUrl(url) {
 /** Rewrites every Facebook link in `text` (the whole original message, for a
  * webhook repost) in place: a spoilered link's domain is swapped for the
  * public fixup host so Discord's native unfurl still renders it — still
- * inside the same `||...||` bars already in the text, so it stays spoilered —
- * a non-spoilered link is wrapped in `<...>`, Discord's own per-link
+ * inside the same `||...||` bars already in the text, so it stays spoilered.
+ * A non-spoilered link that resolved to a playable video (`videoLinkByUrl`,
+ * keyed by the same normalized url buildConversion looked it up with) is
+ * replaced outright by that video/proxy link — live, not wrapped — so Discord
+ * unfurls THAT instead of the original post; leaving the original in place
+ * too (even suppressed via `<...>`) would print the same video twice. Any
+ * other non-spoilered link is wrapped in `<...>`, Discord's own per-link
  * embed-suppression syntax, since its richer OG-scraped embed is attached
  * separately and a live raw URL would otherwise get a second, broken
  * auto-embed from Discord right alongside it. `matches` is
  * extractFacebookMatches's output for the same text, reused here instead of
  * re-detecting spoiler status so this can't disagree with the caller about
- * which links are spoilered. Doing the swap in place — rather than leaving the
- * raw link suppressed AND appending the fixup link as a second line — is what
- * keeps a spoiler-only message from printing the same post twice. */
-function rewriteFacebookLinksForRepost(text, matches) {
+ * which links are spoilered. Doing these swaps in place — rather than leaving
+ * the raw link suppressed AND appending the replacement as a second line — is
+ * what keeps a message from printing the same post twice. */
+function rewriteFacebookLinksForRepost(text, matches, videoLinkByUrl = new Map()) {
   const spoilerByUrl = new Map(matches.map((m) => [m.url, m.spoiler]));
   return text.replace(FB_URL_PATTERN, (m) => {
     const url = /^https?:\/\//i.test(m) ? m : `https://${m}`;
-    return spoilerByUrl.get(url) ? spoilerFixUrl(url) : `<${url}>`;
+    if (spoilerByUrl.get(url)) return spoilerFixUrl(url);
+    const videoLink = videoLinkByUrl.get(url);
+    return videoLink || `<${url}>`;
   });
 }
 

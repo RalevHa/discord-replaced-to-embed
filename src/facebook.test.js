@@ -55,6 +55,16 @@ test('rewriteFacebookLinksForRepost swaps a spoilered link to the fixup host in 
   assert.equal(rewriteFacebookLinksForRepost(text, matches), '||https://facebed.seria.moe/user/posts/123||');
 });
 
+test('rewriteFacebookLinksForRepost swaps a video post link for its video/proxy link in place, not wrapped in <...>', () => {
+  const text = 'check https://fb.watch/abc123/ out';
+  const matches = extractFacebookMatches(text);
+  const videoLinkByUrl = new Map([['https://fb.watch/abc123/', 'https://fb.ralevisdev.com/fb/xyz']]);
+  assert.equal(
+    rewriteFacebookLinksForRepost(text, matches, videoLinkByUrl),
+    'check https://fb.ralevisdev.com/fb/xyz out'
+  );
+});
+
 test('extractFacebookUrls dedupes repeated links', () => {
   const text = 'facebook.com/a/1 again facebook.com/a/1';
   assert.deepEqual(extractFacebookUrls(text), ['https://facebook.com/a/1']);

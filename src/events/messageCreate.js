@@ -5,7 +5,6 @@ const { isExempt, handleFlood } = require('../moderation');
 const {
   buildConversion,
   buildReplyPayload,
-  buildWebhookContent,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,
@@ -44,7 +43,7 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip channels an admin excluded via /ignore-channel — /convert still works there.
   if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
-  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, newText } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -57,7 +56,7 @@ module.exports = async function messageCreate(message, ctx) {
     try {
       const repost = await webhookRepost.repost(
         message,
-        { content: buildWebhookContent(newText, facebookVideoLinks), embeds: facebookEmbeds },
+        { content: newText, embeds: facebookEmbeds },
         storage
       );
       // Best-effort: a one-click delete affordance, not required for the
