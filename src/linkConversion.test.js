@@ -101,14 +101,14 @@ test('a video post gets both its video link AND a bot-built embed with title/des
 // link into an inline player when the message carrying it has no `embeds` of
 // its own — combining both into one message silently drops the video (this is
 // what broke right after the previous fix started attaching the info embed).
-test('buildReplyPayloads splits a video link and an info embed into two messages', () => {
+test('buildReplyPayloads splits a video link and an info embed into two messages, embed first', () => {
   const embed = { data: { title: 'A Reel' } };
   const payloads = buildReplyPayloads(['https://video.example/clip.mp4'], [embed], ['https://video.example/clip.mp4']);
   assert.equal(payloads.length, 2);
-  assert.equal(payloads[0].content, 'https://video.example/clip.mp4');
-  assert.equal(payloads[0].embeds, undefined);
-  assert.equal(payloads[1].content, undefined);
-  assert.deepEqual(payloads[1].embeds, [embed]);
+  assert.deepEqual(payloads[0].embeds, [embed]);
+  assert.equal(payloads[0].content, undefined);
+  assert.equal(payloads[1].content, 'https://video.example/clip.mp4');
+  assert.equal(payloads[1].embeds, undefined);
 });
 
 test('buildReplyPayloads keeps a single message when there is no video (embed-only or text-only)', () => {

@@ -77,6 +77,24 @@ async function repost(message, { content, embeds, hasVideo = false }, storage) {
   const avatarURL = message.member?.displayAvatarURL() || message.author.displayAvatarURL();
   const splitEmbeds = hasVideo && embeds.length > 0;
 
+  // Info embed goes out first (best-effort) so it lands above the video link
+  // in the channel — the video/content post below is the must-succeed one
+  // the rest of this function (and its caller) depends on.
+  if (splitEmbeds) {
+    try {
+      const extraSent = await webhook.send({
+        embeds,
+        username: displayName,
+        avatarURL,
+        allowedMentions: { parse: [] },
+        threadId: channel.isThread() ? channel.id : undefined,
+      });
+      await storage.trackRepostAuthor(extraSent.id, message.author.id);
+    } catch (err) {
+      console.error('Webhook repost: failed to send the info embed:', err);
+    }
+  }
+
   let sent;
   try {
     sent = await webhook.send({
@@ -96,21 +114,6 @@ async function repost(message, { content, embeds, hasVideo = false }, storage) {
   }
 
   await storage.trackRepostAuthor(sent.id, message.author.id);
-
-  if (splitEmbeds) {
-    try {
-      const extraSent = await webhook.send({
-        embeds,
-        username: displayName,
-        avatarURL,
-        allowedMentions: { parse: [] },
-        threadId: channel.isThread() ? channel.id : undefined,
-      });
-      await storage.trackRepostAuthor(extraSent.id, message.author.id);
-    } catch (err) {
-      console.error('Webhook repost: failed to send the follow-up info embed:', err);
-    }
-  }
 
   try {
     await message.delete();

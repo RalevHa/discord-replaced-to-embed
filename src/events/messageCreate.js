@@ -77,13 +77,20 @@ module.exports = async function messageCreate(message, ctx) {
     // an inline player when the message carrying it has no embeds of its own.
     await message.suppressEmbeds(true);
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
-    const [firstPayload, ...morePayloads] = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
-    const reply = await message.reply(firstPayload);
-    replyTracker.set(message.id, reply.id);
-    await reply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
-    for (const payload of morePayloads) {
-      const extraReply = await message.reply(payload);
-      await extraReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+    const payloads = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
+    // Track the content-carrying reply specifically, not just whichever one
+    // happens to go out first — buildReplyPayloads sends the info embed ahead
+    // of the video link, but messageUpdate's edit-sync (and this file's own
+    // suppress-embeds restore) key off the tracked reply as "the" converted
+    // link, which only the content payload is.
+    const trackedIndex = Math.max(
+      payloads.findIndex((p) => p.content !== undefined),
+      0
+    );
+    for (const [index, payload] of payloads.entries()) {
+      const sentReply = await message.reply(payload);
+      if (index === trackedIndex) replyTracker.set(message.id, sentReply.id);
+      await sentReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
     }
   } catch (err) {
     console.error('Error processing message:', err);
