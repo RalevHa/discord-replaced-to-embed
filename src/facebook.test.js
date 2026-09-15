@@ -626,6 +626,30 @@ test('extractFacebookPost reads reactions/comments/shares from the logged-in fra
   }
 });
 
+// Regression test: a cookie-fetched plain page post (no video, no og: tags)
+// exposes reactions/comments/shares under a different, newer shape than the
+// Reel case above — three separate "UFI...ActionRenderer" fragments each
+// repeating the post's feedback id next to their own count field, rather than
+// one "unified_reactors" count colocated with it.
+test("extractFacebookPost reads reactions/comments/shares from the newer 'UFI action renderer' shape, by feedback id proximity", async () => {
+  const restore = mockFetch(`
+    <html><head></head>
+    <script>{"story":{"message":{"text":"The real caption"},"feedback":{"id":"ZmVlZGJhY2s6MTYyNTU5MDcxODk0NTE5Mg=="},"attachments":[{"target":{"__typename":"Photo"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTYyNTU5MDcxODk0NTE5Mg==","viewer_actor":{"id":"1"},"reaction_count":{"count":2082}}}</script>
+    <script>{"feedback":{"comment_rendering_instance":{"comments":{"total_count":75}},"id":"ZmVlZGJhY2s6MTYyNTU5MDcxODk0NTE5Mg=="}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTYyNTU5MDcxODk0NTE5Mg==","share_count":{"count":31}}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('posts'), { cookie: 'c_user=1; xs=2' });
+    assert.equal(data.reactions, 2082);
+    assert.equal(data.comments, 75);
+    assert.equal(data.shares, 31);
+  } finally {
+    restore();
+  }
+});
+
 test('buildEmbed returns one gallery embed per extra photo, sharing the same URL', () => {
   const embeds = buildEmbed({
     title: 'A post',

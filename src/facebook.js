@@ -152,10 +152,7 @@ function looksLikeLoginWall(tags) {
 // Extracts the JSON object value for a `"key":{...}` occurrence, honoring quoted
 // strings/escapes so brace characters inside string values don't miscount. Returns
 // null if the key isn't found or the braces never balance.
-function extractJsonObject(html, keyPattern) {
-  const m = keyPattern.exec(html);
-  if (!m) return null;
-  const start = m.index + m[0].length - 1; // position of the opening "{"
+function readJsonObjectAt(html, start) {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -175,6 +172,12 @@ function extractJsonObject(html, keyPattern) {
     }
   }
   return null;
+}
+
+function extractJsonObject(html, keyPattern) {
+  const m = keyPattern.exec(html);
+  if (!m) return null;
+  return readJsonObjectAt(html, m.index + m[0].length - 1); // m.index+... is the opening "{"
 }
 
 // Reels no longer expose an og:video meta tag — the page instead embeds this field
@@ -242,31 +245,54 @@ function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Facebook duplicates engagement counts across several GraphQL fragments in the same
-// page, under different field names depending on whether the request is authenticated:
-// - Anonymous/crawler fragment: `reaction_count`/`comment_rendering_instance`, paired
-//   together — no share count is exposed to anonymous requests at all.
-// - Logged-in fragment (only present with a `cookie`, see extractFacebookPost):
-//   `unified_reactors` (inside the post's own "story" object, so reliably scoped) plus
-//   `total_comment_count`/`share_count_reduced` elsewhere in the page, tied back to the
-//   right post via the shared feedback id read out of "story".
-// Both shapes repeat similar-looking blocks for *other* posts on the page (a suggested
-// Reels tray, preloaded comments) — the pairing/id-matching below is what keeps this
-// from picking up the wrong post's numbers.
-function extractEngagementCounts(html) {
+// The post's own message-bearing "story" fragment (same node
+// extractEmbeddedPostData's photo_image reads) only ever references its own
+// post's feedback id — every count field below is searched near THIS id
+// rather than unscoped, since the page bundles the exact same-looking count
+// fields for other posts too (a suggested Reels tray, ads, preloaded
+// comments), just far enough away (hundreds of thousands of characters, in
+// practice) that a modest radius can't confuse the two.
+function findFeedbackId(html) {
   const story = extractJsonObject(html, /"story":\{/);
-  if (story) {
-    const feedbackId = /"id":"(ZmVlZGJhY2s6[^"]+)","viewer_actor"/.exec(story);
-    const reactions = /"unified_reactors":\{"count":(\d+)/.exec(story);
-    if (feedbackId && reactions) {
-      const shareMatch = new RegExp(
-        `"total_comment_count":(\\d+),[\\s\\S]{0,200}?"id":"${escapeRegExp(feedbackId[1])}","share_count_reduced":"(\\d+)"`
-      ).exec(html);
-      return {
-        reactions: Number(reactions[1]),
-        comments: shareMatch ? Number(shareMatch[1]) : null,
-        shares: shareMatch ? Number(shareMatch[2]) : null,
-      };
+  const m = story && /"(ZmVlZGJhY2s6[A-Za-z0-9+/=]+)"/.exec(story);
+  return m ? m[1] : null;
+}
+
+function findNumberNearId(html, feedbackId, pattern, radius = 500) {
+  for (const m of html.matchAll(new RegExp(escapeRegExp(feedbackId), 'g'))) {
+    const start = Math.max(0, m.index - radius);
+    const end = Math.min(html.length, m.index + feedbackId.length + radius);
+    const found = pattern.exec(html.slice(start, end));
+    if (found) return Number(found[1]);
+  }
+  return null;
+}
+
+// Facebook exposes reactions/comments/shares under different field names
+// depending on the post/page shape, both only present with a logged-in
+// `cookie` (see extractFacebookPost):
+// - Older shape: "unified_reactors":{"count":N}, "total_comment_count":N,
+//   "share_count_reduced":"N".
+// - Newer shape (seen on a cookie-fetched plain page post): three separate
+//   "UFI...ActionRenderer" fragments, each repeating the feedback id right
+//   next to its own "reaction_count"/"comment_rendering_instance...
+//   total_count"/"share_count" field.
+// Without a cookie, neither shape is present at all — falls through to the
+// anonymous-fragment shapes below.
+function extractEngagementCounts(html) {
+  const feedbackId = findFeedbackId(html);
+  if (feedbackId) {
+    const reactions =
+      findNumberNearId(html, feedbackId, /"unified_reactors":\{"count":(\d+)/) ??
+      findNumberNearId(html, feedbackId, /"reaction_count":\{"count":(\d+)\}/);
+    if (reactions != null) {
+      const comments =
+        findNumberNearId(html, feedbackId, /"total_comment_count":(\d+)/) ??
+        findNumberNearId(html, feedbackId, /"comment_rendering_instance":\{"comments":\{"total_count":(\d+)/);
+      const shares =
+        findNumberNearId(html, feedbackId, /"share_count_reduced":"(\d+)"/) ??
+        findNumberNearId(html, feedbackId, /"share_count":\{"count":(\d+)\}/);
+      return { reactions, comments, shares };
     }
   }
 
@@ -347,7 +373,15 @@ function extractEmbeddedPostData(html) {
   // routes (e.g. /photo?fbid=...) have no "story" object at all, so this falls
   // back to searching the whole page rather than giving up.
   const story = extractJsonObject(html, /"story":\{/);
-  const messageMatch = /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(story || html);
+  // Facebook fragments a post's own data across several separate "story"
+  // occurrences (one might carry the caption, another the photo, another
+  // just engagement counts) — the single "story" object picked above isn't
+  // guaranteed to have every field, so a caption missing from it specifically
+  // (but not the page at all) still falls back to the whole page rather than
+  // reporting no caption.
+  const messageMatch =
+    (story && /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(story)) ||
+    /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
   // The post's own attached photo lives under "photo_image" — a field specific
   // to a real photo attachment, unlike the generic "image" key which just as
   // often matches page furniture (the viewer's own nav bookmark avatar, an
