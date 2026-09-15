@@ -488,6 +488,32 @@ test('buildEmbed falls back to a generic description when none was extracted', (
   assert.equal(json.color, 0x1877f2);
 });
 
+test('buildEmbed omits the image when the post has a video — the video link\'s own preview already shows it', () => {
+  const embeds = buildEmbed({
+    title: 'A Reel',
+    description: '',
+    image: 'https://scontent.example/thumb.jpg',
+    images: ['https://scontent.example/thumb.jpg'],
+    video: 'https://video.example/clip.mp4',
+    siteName: 'Facebook',
+    url: 'https://facebook.com/reel/1',
+  });
+  assert.equal(embeds.length, 1);
+  assert.equal(embeds[0].toJSON().image, undefined);
+});
+
+test('buildEmbed still shows the image for a photo-only post (no video)', () => {
+  const [embed] = buildEmbed({
+    title: 'A photo post',
+    description: '',
+    image: 'https://scontent.example/thumb.jpg',
+    images: ['https://scontent.example/thumb.jpg'],
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+  });
+  assert.equal(embed.toJSON().image.url, 'https://scontent.example/thumb.jpg');
+});
+
 test('buildEmbed appends a compact emoji engagement line to the footer when counts are present', () => {
   const [embed] = buildEmbed({
     title: 'A post',

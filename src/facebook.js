@@ -502,7 +502,10 @@ function buildEmbed(data) {
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
 
-  const images = data.images && data.images.length ? data.images : data.image ? [data.image] : [];
+  // A video post's thumbnail would just duplicate what the video link's own
+  // preview already shows (see buildReplyPayloads in linkConversion.js) — skip
+  // the image(s) entirely when there's a video. Photo-only posts are unaffected.
+  const images = data.video ? [] : data.images && data.images.length ? data.images : data.image ? [data.image] : [];
   if (images[0]) embed.setImage(images[0]);
   const galleryEmbeds = images.slice(1, 4).map((img) => new EmbedBuilder().setURL(data.url).setImage(img));
 
