@@ -455,6 +455,31 @@ test("extractFacebookPost's embedded-JSON fallback ignores an unrelated, earlier
   }
 });
 
+// Regression test: a Reel page bundles a personalized "up next"/suggested
+// reel whose position on the page shifts between requests (confirmed live —
+// the same URL fetched moments apart returned a different reel's caption
+// first each time), so "whichever message comes first in the raw page" is
+// not a stable fallback — it must anchor on the post's own feedback id
+// instead (same one extractEngagementCounts already trusts), even when that
+// id's own "story" fragment doesn't carry the message itself.
+test("extractFacebookPost's caption fallback ignores an unrelated reel's message elsewhere on the page and uses the one near the post's own feedback id", async () => {
+  const padding = 'x'.repeat(1000); // pushes the unrelated block outside findMatchNearId's proximity window
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"message":{"text":"Unrelated suggested reel's caption"}}</script>
+    <!-- ${padding} -->
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz","attachments":[{"target":{"__typename":"Video"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz","message":{"text":"The real caption"}}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'));
+    assert.equal(data.description, 'The real caption');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
   const restore = mockFetch(`
     <html><head>

@@ -252,20 +252,24 @@ function escapeRegExp(str) {
 // fields for other posts too (a suggested Reels tray, ads, preloaded
 // comments), just far enough away (hundreds of thousands of characters, in
 // practice) that a modest radius can't confuse the two.
-function findFeedbackId(html) {
-  const story = extractJsonObject(html, /"story":\{/);
+function findFeedbackId(html, story = extractJsonObject(html, /"story":\{/)) {
   const m = story && /"(ZmVlZGJhY2s6[A-Za-z0-9+/=]+)"/.exec(story);
   return m ? m[1] : null;
 }
 
-function findNumberNearId(html, feedbackId, pattern, radius = 500) {
+function findMatchNearId(html, feedbackId, pattern, radius = 500) {
   for (const m of html.matchAll(new RegExp(escapeRegExp(feedbackId), 'g'))) {
     const start = Math.max(0, m.index - radius);
     const end = Math.min(html.length, m.index + feedbackId.length + radius);
     const found = pattern.exec(html.slice(start, end));
-    if (found) return Number(found[1]);
+    if (found) return found;
   }
   return null;
+}
+
+function findNumberNearId(html, feedbackId, pattern, radius = 500) {
+  const found = findMatchNearId(html, feedbackId, pattern, radius);
+  return found ? Number(found[1]) : null;
 }
 
 // Facebook exposes reactions/comments/shares under different field names
@@ -376,12 +380,21 @@ function extractEmbeddedPostData(html) {
   // Facebook fragments a post's own data across several separate "story"
   // occurrences (one might carry the caption, another the photo, another
   // just engagement counts) — the single "story" object picked above isn't
-  // guaranteed to have every field, so a caption missing from it specifically
-  // (but not the page at all) still falls back to the whole page rather than
-  // reporting no caption.
+  // guaranteed to have every field. A caption missing from it specifically
+  // (but not the page at all) is looked for next near the post's own feedback
+  // id (see extractEngagementCounts) rather than falling straight to an
+  // unscoped whole-page search: the page also bundles a personalized "up
+  // next"/suggested reel whose position shifts between requests, so "whichever
+  // message comes first in the raw page" isn't actually stable — it can (and
+  // did) return a different reel's caption instead of this post's own. Only a
+  // route with no feedback id at all (e.g. /photo?fbid=..., the original case
+  // this fallback was built for) falls back to that unscoped search.
+  const MESSAGE_PATTERN = /"message":\{"text":"((?:[^"\\]|\\.)*)"/;
+  const feedbackId = findFeedbackId(html, story);
   const messageMatch =
-    (story && /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(story)) ||
-    /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
+    (story && MESSAGE_PATTERN.exec(story)) ||
+    (feedbackId && findMatchNearId(html, feedbackId, MESSAGE_PATTERN)) ||
+    MESSAGE_PATTERN.exec(html);
   // The post's own attached photo lives under "photo_image" — a field specific
   // to a real photo attachment, unlike the generic "image" key which just as
   // often matches page furniture (the viewer's own nav bookmark avatar, an
