@@ -4,7 +4,7 @@
 const { isExempt, handleFlood } = require('../moderation');
 const {
   buildConversion,
-  buildReplyPayload,
+  buildReplyPayloads,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,
@@ -43,7 +43,7 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip channels an admin excluded via /ignore-channel — /convert still works there.
   if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
-  const { replaced, textLinks, facebookEmbeds, newText } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -56,7 +56,7 @@ module.exports = async function messageCreate(message, ctx) {
     try {
       const repost = await webhookRepost.repost(
         message,
-        { content: newText, embeds: facebookEmbeds },
+        { content: newText, embeds: facebookEmbeds, hasVideo: facebookVideoLinks.length > 0 },
         storage
       );
       // Best-effort: a one-click delete affordance, not required for the
@@ -72,11 +72,19 @@ module.exports = async function messageCreate(message, ctx) {
   try {
     // Keep the original, just strip its auto-embed, then reply with the converted
     // links (which Discord auto-embeds) and/or the native Facebook embeds. No ping.
+    // A video link and an info embed go out as two separate replies — see
+    // buildReplyPayloads — since Discord only auto-unfurls the video link into
+    // an inline player when the message carrying it has no embeds of its own.
     await message.suppressEmbeds(true);
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
-    const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
+    const [firstPayload, ...morePayloads] = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
+    const reply = await message.reply(firstPayload);
     replyTracker.set(message.id, reply.id);
     await reply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+    for (const payload of morePayloads) {
+      const extraReply = await message.reply(payload);
+      await extraReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+    }
   } catch (err) {
     console.error('Error processing message:', err);
   }

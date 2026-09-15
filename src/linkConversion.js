@@ -117,6 +117,24 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
   };
 }
 
+/**
+ * One or two message payloads to send in order. A video link only renders as
+ * Discord's own inline player through its automatic link-unfurl — which Discord
+ * skips for any message a bot sends with its own non-empty `embeds` already
+ * attached. So when a video link and a bot-built info embed (title/author/
+ * caption/reactions, see buildEmbed) both need to go out, they're split into
+ * two separate messages instead of one combined one: the first carries just
+ * the link(s) so the video actually unfurls, the second carries the embed.
+ * Any other combination (an embed with no video, a video with no embed, plain
+ * text links) is unaffected and stays a single message, as before.
+ */
+function buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks) {
+  if (facebookVideoLinks.length && facebookEmbeds.length) {
+    return [buildReplyPayload(textLinks, []), buildReplyPayload([], facebookEmbeds)];
+  }
+  return [buildReplyPayload(textLinks, facebookEmbeds)];
+}
+
 // Shared guard: skip bot messages, DMs, and guilds outside the allowlist.
 // Used by both messageCreate and messageUpdate so the checks can't drift.
 function isHandleableMessage(message, config) {
@@ -128,6 +146,7 @@ function isHandleableMessage(message, config) {
 module.exports = {
   buildConversion,
   buildReplyPayload,
+  buildReplyPayloads,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,

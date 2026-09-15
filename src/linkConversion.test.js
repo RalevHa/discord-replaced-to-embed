@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildConversion } = require('./linkConversion');
+const { buildConversion, buildReplyPayloads } = require('./linkConversion');
 
 const baseConfig = { facebookEmbedEnabled: true };
 
@@ -95,6 +95,26 @@ test('a video post gets both its video link AND a bot-built embed with title/des
   } finally {
     restore();
   }
+});
+
+// Regression test for buildReplyPayloads: Discord only auto-unfurls a video
+// link into an inline player when the message carrying it has no `embeds` of
+// its own — combining both into one message silently drops the video (this is
+// what broke right after the previous fix started attaching the info embed).
+test('buildReplyPayloads splits a video link and an info embed into two messages', () => {
+  const embed = { data: { title: 'A Reel' } };
+  const payloads = buildReplyPayloads(['https://video.example/clip.mp4'], [embed], ['https://video.example/clip.mp4']);
+  assert.equal(payloads.length, 2);
+  assert.equal(payloads[0].content, 'https://video.example/clip.mp4');
+  assert.equal(payloads[0].embeds, undefined);
+  assert.equal(payloads[1].content, undefined);
+  assert.deepEqual(payloads[1].embeds, [embed]);
+});
+
+test('buildReplyPayloads keeps a single message when there is no video (embed-only or text-only)', () => {
+  const embed = { data: { title: 'A Photo Post' } };
+  assert.equal(buildReplyPayloads([], [embed], []).length, 1);
+  assert.equal(buildReplyPayloads(['https://fixupx.com/user/status/123'], [], []).length, 1);
 });
 
 function mockFetchVideo() {

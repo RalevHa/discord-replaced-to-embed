@@ -47,11 +47,18 @@ async function getOrCreateWebhook(channel) {
  * the original. Throws on any failure before the original is touched — the
  * caller falls back to a normal reply in that case.
  * @param {import('discord.js').Message} message
- * @param {{ content: string, embeds: object[] }} payload
+ * @param {{ content: string, embeds: object[], hasVideo?: boolean }} payload
+ *   `hasVideo`: `content` contains a Facebook video/proxy link that needs
+ *   Discord's own auto-unfurl to play inline — which Discord skips for any
+ *   message sent with its own non-empty `embeds` (see buildReplyPayloads in
+ *   linkConversion.js). When both are present, they go out as two separate
+ *   webhook posts (same impersonated author) instead of one combined one.
  * @param {import('./storage').Storage} storage
  * @returns {Promise<import('discord.js').Message>} the new webhook message
+ *   carrying `content` (tracked for the delete-reaction; the follow-up embed
+ *   post, if any, is tracked too but isn't returned)
  */
-async function repost(message, { content, embeds }, storage) {
+async function repost(message, { content, embeds, hasVideo = false }, storage) {
   const channel = message.channel;
   // Webhooks belong to a text channel, not a thread — a thread's messages are
   // sent through its parent's webhook with `threadId` set.
@@ -68,12 +75,13 @@ async function repost(message, { content, embeds }, storage) {
 
   const displayName = message.member?.displayName || message.author.username;
   const avatarURL = message.member?.displayAvatarURL() || message.author.displayAvatarURL();
+  const splitEmbeds = hasVideo && embeds.length > 0;
 
   let sent;
   try {
     sent = await webhook.send({
       content,
-      embeds,
+      embeds: splitEmbeds ? [] : embeds,
       username: displayName,
       avatarURL,
       files: [...message.attachments.values()],
@@ -88,6 +96,21 @@ async function repost(message, { content, embeds }, storage) {
   }
 
   await storage.trackRepostAuthor(sent.id, message.author.id);
+
+  if (splitEmbeds) {
+    try {
+      const extraSent = await webhook.send({
+        embeds,
+        username: displayName,
+        avatarURL,
+        allowedMentions: { parse: [] },
+        threadId: channel.isThread() ? channel.id : undefined,
+      });
+      await storage.trackRepostAuthor(extraSent.id, message.author.id);
+    } catch (err) {
+      console.error('Webhook repost: failed to send the follow-up info embed:', err);
+    }
+  }
 
   try {
     await message.delete();

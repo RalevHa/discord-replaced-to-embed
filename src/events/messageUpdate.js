@@ -3,7 +3,7 @@
 
 const {
   buildConversion,
-  buildReplyPayload,
+  buildReplyPayloads,
   isHandleableMessage,
   delay,
   SUPPRESS_PROPAGATION_DELAY_MS,
@@ -33,7 +33,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   const existingReply = existingReplyId
     ? await message.channel.messages.fetch(existingReplyId).catch(() => null)
     : null;
-  const { replaced, textLinks, facebookEmbeds, newText } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -58,10 +58,19 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       await message.suppressEmbeds(true);
       // embeds/content must be passed explicitly (even empty) so edit() clears
       // whichever side no longer applies, rather than leaving stale content.
+      // A single edited message can't be split into two the way a fresh reply
+      // can (see buildReplyPayloads) — if the edit now needs both a video link
+      // and an info embed, keep the video link on this one (so it still
+      // auto-unfurls) and send the embed as a new follow-up reply instead.
+      const needsSplit = facebookVideoLinks.length > 0 && facebookEmbeds.length > 0;
       await existingReply.edit({
         content: textLinks.length ? textLinks.join('\n') : '',
-        embeds: facebookEmbeds,
+        embeds: needsSplit ? [] : facebookEmbeds,
       });
+      if (needsSplit) {
+        const extraReply = await message.reply({ embeds: facebookEmbeds, allowedMentions: { repliedUser: false } });
+        await extraReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+      }
       return;
     }
 
@@ -74,7 +83,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       try {
         const repost = await webhookRepost.repost(
           message,
-          { content: newText, embeds: facebookEmbeds },
+          { content: newText, embeds: facebookEmbeds, hasVideo: facebookVideoLinks.length > 0 },
           storage
         );
         await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
@@ -87,9 +96,14 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
 
     await message.suppressEmbeds(true);
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
-    const reply = await message.reply(buildReplyPayload(textLinks, facebookEmbeds));
+    const [firstPayload, ...morePayloads] = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
+    const reply = await message.reply(firstPayload);
     replyTracker.set(message.id, reply.id);
     await reply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+    for (const payload of morePayloads) {
+      const extraReply = await message.reply(payload);
+      await extraReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
+    }
   } catch (err) {
     console.error('Error processing message edit:', err);
   }
