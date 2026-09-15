@@ -18,6 +18,8 @@ const FB_URL_PATTERN =
 const CACHE_TTL_MS = 15 * 60 * 1000; // absorbs re-shares of the same post without hammering Facebook
 const FETCH_TIMEOUT_MS = 8000;
 const VIDEO_VERIFY_TIMEOUT_MS = 4000;
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+const RETRY_DELAY_MS = 250;
 
 // The crawler UA gets Facebook's lightweight "link preview" response, which for some
 // Reels/videos only exposes the flaky lookaside.fbsbx.com crawler-media endpoint (see
@@ -322,6 +324,25 @@ function extractEngagementCounts(html) {
   return { reactions: null, comments: null, shares: null };
 }
 
+// Facebook rate-limits/hiccups often enough that a single failed fetch
+// shouldn't mean "no embed at all" for the whole post. Retries on a transient
+// status (429/500/502/503/504) or a thrown network/timeout error, up to
+// `attempts` tries total, with a short fixed delay between them. Builds the
+// abort signal itself from `timeoutMs` fresh on every attempt — reusing one
+// `AbortSignal.timeout(...)` across retries would carry over an already-
+// elapsed (or already-fired) deadline from the first attempt.
+async function fetchWithRetry(url, options, timeoutMs, attempts = 2) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === attempts) return response;
+    } catch (err) {
+      if (attempt === attempts) throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+  }
+}
+
 // Unlike an actual og:video: tag, the browser_native lookaside url is an
 // undocumented endpoint that serves the real .mp4 for some posts and a 500
 // error page for others, with nothing in the post's own metadata predicting
@@ -330,11 +351,14 @@ function extractEngagementCounts(html) {
 // unfurler tries and fails.
 async function verifyVideoUrl(url) {
   try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' },
-      signal: AbortSignal.timeout(VIDEO_VERIFY_TIMEOUT_MS),
-    });
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: 'HEAD',
+        headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' },
+      },
+      VIDEO_VERIFY_TIMEOUT_MS
+    );
     return response.ok && (response.headers.get('content-type') || '').startsWith('video/');
   } catch {
     return false;
@@ -435,35 +459,38 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
 
   let data = null;
   try {
-    const response = await fetch(key, {
-      headers: cookie
-        ? {
-            // A logged-in request gets Facebook's bot-fingerprint check applied (the
-            // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
-            // gets a generic HTTP 400 "Error" page; needs the browser-signature
-            // headers Chrome itself sends alongside a real cookie to pass.
-            'User-Agent': BROWSER_USER_AGENT,
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Upgrade-Insecure-Requests': '1',
-            Cookie: cookie,
-          }
-        : {
-            'User-Agent': CRAWLER_USER_AGENT,
-            Accept: 'text/html,application/xhtml+xml',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    const response = await fetchWithRetry(
+      key,
+      {
+        headers: cookie
+          ? {
+              // A logged-in request gets Facebook's bot-fingerprint check applied (the
+              // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
+              // gets a generic HTTP 400 "Error" page; needs the browser-signature
+              // headers Chrome itself sends alongside a real cookie to pass.
+              'User-Agent': BROWSER_USER_AGENT,
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+              'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
+              'Sec-Ch-Ua-Mobile': '?0',
+              'Sec-Ch-Ua-Platform': '"Windows"',
+              'Upgrade-Insecure-Requests': '1',
+              Cookie: cookie,
+            }
+          : {
+              'User-Agent': CRAWLER_USER_AGENT,
+              Accept: 'text/html,application/xhtml+xml',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+        redirect: 'follow',
+      },
+      FETCH_TIMEOUT_MS
+    );
 
     if (response.ok) {
       const html = await response.text();

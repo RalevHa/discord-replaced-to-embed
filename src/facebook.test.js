@@ -555,6 +555,47 @@ test('extractFacebookPost returns null on a non-ok response', async () => {
   }
 });
 
+// Regression test: Facebook's own rate-limiting/transient errors shouldn't
+// mean "no embed at all" for the whole post — a single 503 should be retried
+// once and succeed, rather than being treated the same as a hard failure.
+test('extractFacebookPost retries once on a transient 503 and succeeds', async () => {
+  const original = global.fetch;
+  let calls = 0;
+  global.fetch = async (url, opts) => {
+    if (opts && opts.method === 'HEAD') return { ok: true, headers: { get: () => 'video/mp4' } };
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 503, url, text: async () => '' };
+    return { ok: true, status: 200, url, text: async () => '<html><head><meta property="og:title" content="Recovered"/></head></html>' };
+  };
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(calls, 2);
+    assert.equal(data.title, 'Recovered');
+  } finally {
+    global.fetch = original;
+  }
+});
+
+// A non-retryable status (e.g. 400 — Facebook's bot-fingerprint rejection,
+// see extractFacebookPost's cookie-header comment) shouldn't burn a retry on
+// a request that will just fail identically again.
+test('extractFacebookPost does not retry a non-retryable status like 400', async () => {
+  const original = global.fetch;
+  let calls = 0;
+  global.fetch = async (url, opts) => {
+    if (opts && opts.method === 'HEAD') return { ok: true, headers: { get: () => 'video/mp4' } };
+    calls += 1;
+    return { ok: false, status: 400, url, text: async () => '' };
+  };
+  try {
+    const data = await extractFacebookPost(uniquePostUrl());
+    assert.equal(calls, 1);
+    assert.equal(data, null);
+  } finally {
+    global.fetch = original;
+  }
+});
+
 test('extractFacebookPost caches results per normalized URL', async () => {
   let calls = 0;
   const original = global.fetch;
