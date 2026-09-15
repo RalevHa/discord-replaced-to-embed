@@ -63,23 +63,25 @@ async function buildConversion(content, config, overrides = {}) {
       cookie: config.facebookCookie,
     });
     if (data) {
-      // Reels/videos: post a link Discord's own unfurler will play inline — a
-      // bot-built embed can't carry playable video. Prefer our own proxy (stable
-      // Twitter Player Card, works even if Facebook's CDN url is signed/expiring);
-      // fall back to the raw CDN url when no proxy is configured. facebook.js
-      // already verified data.video actually serves video before setting it.
+      // Reels/videos: ALSO post a link Discord's own unfurler will play inline —
+      // a bot-built embed can't carry playable video (see buildEmbed). Prefer our
+      // own proxy (stable Twitter Player Card, works even if Facebook's CDN url is
+      // signed/expiring); fall back to the raw CDN url when no proxy is
+      // configured. facebook.js already verified data.video actually serves video
+      // before setting it. The bot-built embed below still carries the title,
+      // author, caption and reaction counts the raw video link's own unfurl
+      // wouldn't show on its own.
       if (data.video) {
         const videoLink = config.facebookProxyBaseUrl
           ? `${config.facebookProxyBaseUrl}/fb/${facebook.encodeProxyPath(url)}`
           : data.video;
         facebookVideoLinks.push(videoLink);
         videoLinkByUrl.set(url, videoLink);
-      } else {
-        // Discord caps a message at 10 embeds total; multiple multi-photo posts
-        // in one message could otherwise exceed that and get the reply rejected.
-        const room = 10 - facebookEmbeds.length;
-        if (room > 0) facebookEmbeds.push(...facebook.buildEmbed(data).slice(0, room));
       }
+      // Discord caps a message at 10 embeds total; multiple multi-photo posts
+      // in one message could otherwise exceed that and get the reply rejected.
+      const room = 10 - facebookEmbeds.length;
+      if (room > 0) facebookEmbeds.push(...facebook.buildEmbed(data).slice(0, room));
       replaced.push({ label: 'Facebook' });
     }
   }

@@ -79,6 +79,24 @@ test('a non-spoilered video post link is replaced by its proxy link in place, no
   }
 });
 
+// Regression test: a video/Reel post used to post ONLY the raw video link,
+// silently dropping the author/caption/reactions a bot-built embed carries —
+// Discord's own unfurl of a bare video link shows the player but nothing else.
+// Both should now go out together: the video link plays inline, the embed
+// carries everything else.
+test('a video post gets both its video link AND a bot-built embed with title/description', async () => {
+  const restore = mockFetchVideo();
+  try {
+    const input = 'https://fb.watch/JsAfNOk_Bs/';
+    const { facebookVideoLinks, facebookEmbeds } = await buildConversion(input, baseConfig);
+    assert.equal(facebookVideoLinks.length, 1);
+    assert.equal(facebookEmbeds.length, 1);
+    assert.equal(facebookEmbeds[0].data.title, 'A Reel');
+  } finally {
+    restore();
+  }
+});
+
 function mockFetchVideo() {
   const original = global.fetch;
   global.fetch = async (url, opts) => {
