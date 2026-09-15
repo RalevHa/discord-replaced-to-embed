@@ -339,8 +339,26 @@ function extractAlbumImages(html) {
 // caption and image are still present, though, as JSON embedded in a <script> blob
 // (React hydration data), so fall back to pulling them out of there directly.
 function extractEmbeddedPostData(html) {
-  const messageMatch = /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
-  const imageMatch = /"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(html);
+  // Scoped to the post's own "story" object (same node extractPostTimestamp/
+  // extractEngagementCounts read) when one's present — a page this shell-only
+  // (logged-in fetch of a permalink/post) bundles dozens of unrelated "story"
+  // fragments for other feed items, ads and the viewer's own nav furniture, so
+  // an unscoped search below would just as easily match one of those. Some
+  // routes (e.g. /photo?fbid=...) have no "story" object at all, so this falls
+  // back to searching the whole page rather than giving up.
+  const story = extractJsonObject(html, /"story":\{/);
+  const messageMatch = /"message":\{"text":"((?:[^"\\]|\\.)*)"/.exec(story || html);
+  // The post's own attached photo lives under "photo_image" — a field specific
+  // to a real photo attachment, unlike the generic "image" key which just as
+  // often matches page furniture (the viewer's own nav bookmark avatar, an
+  // unrelated ad's thumbnail, a suggested reel's preview). Scoped to `story`
+  // when there is one, so a different post's "photo_image" on the same page
+  // can't be picked up instead. A route with no "story" object at all (see
+  // above) has no such furniture to be confused with in the first place, so
+  // that case still falls back to the plain, unscoped "image" key.
+  const imageMatch = story
+    ? /"photo_image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(story)
+    : /"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(html);
   if (!messageMatch && !imageMatch) return null;
   return {
     description: messageMatch ? decodeJsonEscapedString(messageMatch[1]) : '',

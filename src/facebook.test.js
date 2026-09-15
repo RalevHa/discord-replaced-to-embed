@@ -391,6 +391,28 @@ test('extractFacebookPost falls back to embedded JSON message/image when no og: 
   }
 });
 
+// Regression test: a page fetched with a logged-in cookie (see extractFacebookPost's
+// `cookie` option) for a plain permalink post has no og:image at all (Comet SPA
+// shell), and bundles a "story" fragment for the viewer's OWN nav bookmark —
+// which has a generic "image" (their avatar) sitting before the real post's
+// "story" fragment in the page. The old unscoped "image" lookup picked up that
+// avatar; scoped photo_image lookup must find the real post photo instead.
+test("extractFacebookPost's embedded-JSON fallback ignores an unrelated, earlier generic \"image\" (e.g. the viewer's own nav bookmark, outside any story) and uses the post's own photo_image", async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"sidebar":{"bookmark_type":"type_self_timeline","image":{"uri":"https:\\/\\/scontent.example\\/avatar.jpg"}}}</script>
+    <script>{"story":{"message":{"text":"The real caption"},"attachments":[{"target":{"__typename":"Photo"},"styles":{"attachment":{"media":{"photo_image":{"uri":"https:\\/\\/scontent.example\\/real-photo.jpg"}}}}}]}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('posts'));
+    assert.equal(data.description, 'The real caption');
+    assert.equal(data.image, 'https://scontent.example/real-photo.jpg');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
   const restore = mockFetch(`
     <html><head>
