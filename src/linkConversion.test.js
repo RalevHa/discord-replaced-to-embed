@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildConversion, buildReplyPayloads } = require('./linkConversion');
+const { encodeProxyPath } = require('./facebook');
 
 const baseConfig = { facebookEmbedEnabled: true };
 
@@ -30,6 +31,15 @@ test('a spoilered Facebook link in newText has its domain swapped to the fixup h
     newText,
     'https://fixupx.com/user/status/123 and ||https://facebed.seria.moe/user/posts/456||'
   );
+});
+
+test('a spoilered Facebook link routes through our own proxy when facebookProxyBaseUrl is configured', async () => {
+  const url = 'https://www.facebook.com/user/posts/456';
+  const { newText } = await buildConversion(`||${url}||`, {
+    ...baseConfig,
+    facebookProxyBaseUrl: 'https://fb.ralevisdev.com',
+  });
+  assert.equal(newText, `||https://fb.ralevisdev.com/fb/${encodeProxyPath(url)}||`);
 });
 
 test('Facebook links are left untouched when facebookEmbedEnabled is false', async () => {
