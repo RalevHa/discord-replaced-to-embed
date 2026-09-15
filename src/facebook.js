@@ -57,15 +57,6 @@ function spoilerFixUrl(url) {
   return url.replace(FB_DOMAIN_PATTERN, SPOILER_FIX_HOST);
 }
 
-/** Link to use for a spoilered post: our own video-proxy route when configured
- * (same synthetic-OG-page trick as the video link, see facebookProxy.js — it's
- * spoiler-agnostic, just an unfurl-able page that redirects real visitors to
- * the real post), falling back to the public fixup host when no proxy base
- * URL is configured. */
-function spoilerLinkFor(url, proxyBaseUrl) {
-  return proxyBaseUrl ? `${proxyBaseUrl}/fb/${encodeProxyPath(url)}` : spoilerFixUrl(url);
-}
-
 /** Rewrites every Facebook link in `text` (the whole original message, for a
  * webhook repost) in place: a spoilered link's domain is swapped for the
  * public fixup host so Discord's native unfurl still renders it — still
@@ -84,11 +75,11 @@ function spoilerLinkFor(url, proxyBaseUrl) {
  * which links are spoilered. Doing these swaps in place — rather than leaving
  * the raw link suppressed AND appending the replacement as a second line — is
  * what keeps a message from printing the same post twice. */
-function rewriteFacebookLinksForRepost(text, matches, videoLinkByUrl = new Map(), proxyBaseUrl) {
+function rewriteFacebookLinksForRepost(text, matches, videoLinkByUrl = new Map()) {
   const spoilerByUrl = new Map(matches.map((m) => [m.url, m.spoiler]));
   return text.replace(FB_URL_PATTERN, (m) => {
     const url = /^https?:\/\//i.test(m) ? m : `https://${m}`;
-    if (spoilerByUrl.get(url)) return spoilerLinkFor(url, proxyBaseUrl);
+    if (spoilerByUrl.get(url)) return spoilerFixUrl(url);
     const videoLink = videoLinkByUrl.get(url);
     return videoLink || `<${url}>`;
   });
@@ -654,7 +645,6 @@ module.exports = {
   extractFacebookMatches,
   rewriteFacebookLinksForRepost,
   spoilerFixUrl,
-  spoilerLinkFor,
   extractFacebookPost,
   buildEmbed,
   engagementLine,

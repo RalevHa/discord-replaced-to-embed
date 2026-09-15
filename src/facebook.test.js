@@ -10,7 +10,6 @@ const {
   decodeProxyPath,
   rewriteFacebookLinksForRepost,
   spoilerFixUrl,
-  spoilerLinkFor,
 } = require('./facebook');
 
 test('extractFacebookUrls finds bare and scheme-prefixed links', () => {
@@ -39,21 +38,6 @@ test('spoilerFixUrl swaps the domain for the public fixup host, dropping subdoma
     'https://facebed.seria.moe/user/posts/123'
   );
   assert.equal(spoilerFixUrl('https://fb.watch/abc123/'), 'https://facebed.seria.moe/abc123/');
-});
-
-test('spoilerLinkFor routes through our own proxy when a proxy base URL is configured', () => {
-  const url = 'https://www.facebook.com/user/posts/123';
-  assert.equal(
-    spoilerLinkFor(url, 'https://fb.ralevisdev.com'),
-    `https://fb.ralevisdev.com/fb/${encodeProxyPath(url)}`
-  );
-});
-
-test('spoilerLinkFor falls back to the public fixup host with no proxy base URL configured', () => {
-  assert.equal(
-    spoilerLinkFor('https://www.facebook.com/user/posts/123', undefined),
-    'https://facebed.seria.moe/user/posts/123'
-  );
 });
 
 test('rewriteFacebookLinksForRepost wraps a non-spoilered link in <...> without touching other text', () => {

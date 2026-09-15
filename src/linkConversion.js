@@ -49,12 +49,11 @@ async function buildConversion(content, config, overrides = {}) {
     if (spoiler) {
       // Skip the OG-scrape/embed-build entirely — a bot-attached embed can't be
       // spoiler-blurred by Discord, so building it now would leak the
-      // image/description before it's revealed. Route through our own video-proxy
-      // host (or the public fixup host as a fallback when no proxy is configured)
-      // instead of the raw facebook.com URL so Discord's own native unfurl
-      // handles it, which DOES inherit the spoiler — same "revealed on click"
-      // experience every other platform already gets (see facebook.js).
-      facebookSpoilerLinks.push(`||${facebook.spoilerLinkFor(url, config.facebookProxyBaseUrl)}||`);
+      // image/description before it's revealed. Route through a public fixup
+      // host instead of the raw facebook.com URL so Discord's own native
+      // unfurl handles it, which DOES inherit the spoiler — same "revealed on
+      // click" experience every other platform already gets (see facebook.js).
+      facebookSpoilerLinks.push(`||${facebook.spoilerFixUrl(url)}||`);
       replaced.push({ label: 'Facebook' });
       continue;
     }
@@ -102,7 +101,7 @@ async function buildConversion(content, config, overrides = {}) {
   // again — see videoLinkByUrl above), any other non-spoilered one wrapped in
   // `<...>` since its richer embed is built and attached separately.
   const webhookSafeText = facebookMatches.length
-    ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches, videoLinkByUrl, config.facebookProxyBaseUrl)
+    ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches, videoLinkByUrl)
     : newText;
 
   return { replaced, textLinks, facebookEmbeds, newText: webhookSafeText, facebookVideoLinks };
