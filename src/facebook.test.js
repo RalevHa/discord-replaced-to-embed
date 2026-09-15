@@ -100,14 +100,14 @@ function uniquePostUrl(path = 'user/posts') {
 // extractFacebookPost hits the network, so these tests stub global.fetch. facebook.js
 // calls `fetch` at invocation time (not captured at require time), so overriding it
 // here takes effect immediately.
-function mockFetch(html, { ok = true, videoOk = true, captureHeaders } = {}) {
+function mockFetch(html, { ok = true, videoOk = true, captureHeaders, finalUrl } = {}) {
   const original = global.fetch;
   global.fetch = async (url, opts) => {
     if (opts && opts.method === 'HEAD') {
       return { ok: videoOk, headers: { get: () => (videoOk ? 'video/mp4' : 'text/html') } };
     }
     if (captureHeaders) captureHeaders(opts.headers);
-    return { ok, text: async () => html };
+    return { ok, url: finalUrl || url, text: async () => html };
   };
   return () => {
     global.fetch = original;
@@ -340,6 +340,28 @@ test("extractFacebookPost's progressive_url lookup ignores a different video's b
   try {
     const data = await extractFacebookPost(url);
     assert.equal(data.video, 'https://scontent.example/right.mp4');
+  } finally {
+    restore();
+  }
+});
+
+// Regression test: a /share/v/<code> link's own URL has no video id in it at
+// all (an opaque short code) — Facebook redirects it to the real /reel/<id>
+// URL, and the video id must come from THAT (response.url), not the
+// originally-requested share link, or progressive_url lookup never even
+// starts (no id to anchor on) and the post falls back to an image-only embed.
+test('extractFacebookPost reads the video id from the post-redirect URL for a /share/v/ link', async () => {
+  const restore = mockFetch(
+    `
+    <html><head><meta property="og:title" content="A Reel" /></head>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=999&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/resolved.mp4","metadata":{"quality":"HD"}}]}</script>
+    </html>
+  `,
+    { finalUrl: 'https://www.facebook.com/reel/999/?fs=e' }
+  );
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/share/v/abc123/?mibextid=x');
+    assert.equal(data.video, 'https://scontent.example/resolved.mp4');
   } finally {
     restore();
   }

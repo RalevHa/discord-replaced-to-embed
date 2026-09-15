@@ -494,7 +494,14 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
         //     extractBrowserNativeVideoUrl) — verified before use since, without a
         //     cookie, it's the crawler-only stub that 500s for most requesters.
         const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
-        const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, extractVideoIdFromUrl(url));
+        // A share/v/<code> link's own URL has no video id in it at all (an
+        // opaque short code) — it only shows up after Facebook's redirect
+        // resolves it to the real /reel/<id> or /videos/<id> URL, so this
+        // must read the id from where the fetch actually landed (response.url),
+        // not the URL that was requested. Still tries the requested url too,
+        // in case a redirect-less fetch left response.url exactly the same.
+        const videoId = extractVideoIdFromUrl(response.url) || extractVideoIdFromUrl(url);
+        const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
         const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
         const browserNativeVideoOk =
           browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
