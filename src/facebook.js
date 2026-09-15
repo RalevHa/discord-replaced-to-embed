@@ -456,8 +456,28 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
       const html = await response.text();
       const { tags, images } = parseOgTags(html);
       const ogHasContent = tags['og:title'] || tags['og:description'] || images.length;
+      // A /watch/?v= video page can have neither a caption nor a photo at all
+      // (extractEmbeddedPostData's fallback then finds nothing either) while
+      // still having a perfectly good video — checked separately so that case
+      // doesn't get thrown away before video extraction below even runs.
+      const hasVideoSignal =
+        Boolean(tags['og:video'] || tags['og:video:secure_url'] || tags['og:video:url']) ||
+        /browser_native_(?:hd|sd)_url/.test(html) ||
+        /dash_mpd_debug\.mpd\?v=/.test(html);
       const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
-      if ((ogHasContent || fallback) && !looksLikeLoginWall(tags)) {
+      const hitLoginWall = looksLikeLoginWall(tags);
+      // A login wall with no cookie configured is normal (Facebook just doesn't
+      // trust the plain crawler UA with everything) — silently falls through
+      // to whatever a real request without one would see. With a cookie, it
+      // means that specific session is dead (expired, logged out elsewhere,
+      // checkpointed) and every fetch using it will now quietly degrade the
+      // same way FACEBOOK_COOKIE being unset always has, until it's replaced.
+      if (cookie && hitLoginWall) {
+        console.warn(
+          `Facebook: FACEBOOK_COOKIE looks expired or invalid (hit a login wall fetching ${url}) — get a fresh cookie and update it`
+        );
+      }
+      if ((ogHasContent || fallback || hasVideoSignal) && !hitLoginWall) {
         const albumImages = extractAlbumImages(html);
         const imageList = albumImages.length ? albumImages : images;
         // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.

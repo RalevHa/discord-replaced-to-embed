@@ -244,6 +244,26 @@ test('extractFacebookPost falls back to browser_native_hd_url when no og:video t
   }
 });
 
+// Regression test: a /watch/?v= video page can have no og:title/description/
+// image AND no "message"/"photo_image" for extractEmbeddedPostData's fallback
+// to find either (some watch-page videos genuinely have no caption at all) —
+// extraction used to bail out entirely before ever attempting video
+// extraction, so the post was dropped even though a perfectly good video was
+// sitting right there in the page.
+test('extractFacebookPost still extracts the video from a /watch/?v= page with no caption, image, or og: tags at all', async () => {
+  const restore = mockFetch(`
+    <html><head><title>วิดีโอ</title></head>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=4390082977973651&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/watch.mp4","metadata":{"quality":"HD"}}]}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/watch/?v=4390082977973651');
+    assert.equal(data.video, 'https://scontent.example/watch.mp4');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost discards a browser_native video URL that fails the HEAD verification', async () => {
   const restore = mockFetch(
     `
@@ -439,6 +459,42 @@ test('extractFacebookPost returns null for a login-wall page', async () => {
     assert.equal(data, null);
   } finally {
     restore();
+  }
+});
+
+// Regression test: a login wall with a cookie configured means that specific
+// session has gone dead (expired/logged out/checkpointed) — every fetch using
+// it will now silently degrade forever unless someone notices and replaces
+// it, so this must log a clear, actionable warning rather than fail quietly
+// like the no-cookie case above (a login wall there is just normal).
+test('extractFacebookPost warns when a configured cookie hits a login wall, but not otherwise', async () => {
+  const html = `
+    <html><head>
+      <meta property="og:title" content="Facebook" />
+      <meta property="og:description" content="Log in or sign up to view this content." />
+    </head></html>
+  `;
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args.join(' '));
+
+  let restore = mockFetch(html);
+  try {
+    await extractFacebookPost(uniquePostUrl(), { cookie: 'c_user=1; xs=2' });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /FACEBOOK_COOKIE looks expired or invalid/);
+  } finally {
+    restore();
+  }
+
+  warnings.length = 0;
+  restore = mockFetch(html);
+  try {
+    await extractFacebookPost(uniquePostUrl()); // no cookie — expected, not a warning
+    assert.equal(warnings.length, 0);
+  } finally {
+    restore();
+    console.warn = originalWarn;
   }
 });
 
