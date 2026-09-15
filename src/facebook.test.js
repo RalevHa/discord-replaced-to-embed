@@ -284,6 +284,47 @@ test('extractFacebookPost with skipVideoVerification posts the browser_native vi
   }
 });
 
+test('extractFacebookPost prefers the HD progressive_url (logged-in cookie page) over browser_native_hd_url, unverified', async () => {
+  const url = uniquePostUrl('reel');
+  const id = url.split('/').pop();
+  const restore = mockFetch(
+    `
+    <html><head>
+      <meta property="og:type" content="video.other" />
+      <meta property="og:title" content="A Reel" />
+    </head>
+    <script>{"story":{"creation_time":1600000000,"attachments":[{"media":{"browser_native_hd_url":"https:\\/\\/lookaside.fbsbx.com\\/lookaside\\/crawler\\/media\\/?media_id=${id}"}}]}}</script>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=${id}&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/sd.mp4","metadata":{"quality":"SD"}},{"progressive_url":"https:\\/\\/scontent.example\\/hd.mp4","metadata":{"quality":"HD"}}]}</script>
+    </html>
+  `,
+    { videoOk: false } // the crawler-stub HEAD check would fail — progressive_url must not depend on it
+  );
+  try {
+    const data = await extractFacebookPost(url);
+    assert.equal(data.video, 'https://scontent.example/hd.mp4');
+  } finally {
+    restore();
+  }
+});
+
+test("extractFacebookPost's progressive_url lookup ignores a different video's block (e.g. an 'up next' reel bundled in the same page)", async () => {
+  const url = uniquePostUrl('reel');
+  const id = url.split('/').pop();
+  const otherId = `${id}9`;
+  const restore = mockFetch(`
+    <html><head><meta property="og:title" content="A Reel" /></head>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=${otherId}&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/wrong.mp4","metadata":{"quality":"HD"}}]}</script>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=${id}&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/right.mp4","metadata":{"quality":"HD"}}]}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(url);
+    assert.equal(data.video, 'https://scontent.example/right.mp4');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost sends a browser User-Agent and Cookie header when a cookie is configured', async () => {
   let sentHeaders;
   const restore = mockFetch('<html><head><meta property="og:title" content="A post"/></head></html>', {

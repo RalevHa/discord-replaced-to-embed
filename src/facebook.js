@@ -192,6 +192,42 @@ function extractBrowserNativeVideoUrl(html) {
   return m ? m[1].replace(/\\\//g, '/') : null;
 }
 
+// A page fetched with a logged-in `cookie` (see extractFacebookPost) exposes a completely
+// different, better video field than the anonymous crawler page: "progressive_urls", a
+// fully-signed direct CDN link that's actually playable (unlike browser_native_*_url above,
+// a crawler-only lookaside stub that 500s for most requesters — see extractBrowserNativeVideoUrl's
+// callers). This field doesn't exist at all without a cookie, so this is only worth trying
+// when one's configured.
+// The page repeats this shape once per video referenced on it (the post's own video, plus any
+// "up next" reels bundled in the same response) with no post/comment id sitting next to it to
+// scope by — but each one is immediately preceded by a "dash_manifest_urls" entry naming that
+// video's own id (`dash_mpd_debug.mpd?v=<id>`), which anchors this to the requested video
+// specifically (id comes from the post's own URL, see extractVideoIdFromUrl).
+function extractProgressiveVideoUrl(html, videoId) {
+  if (!videoId) return null;
+  const anchor = html.indexOf(`dash_mpd_debug.mpd?v=${videoId}&`);
+  if (anchor === -1) return null;
+  const arrayStart = html.indexOf('"progressive_urls":[', anchor);
+  if (arrayStart === -1 || arrayStart - anchor > 2000) return null;
+  const arrayEnd = html.indexOf(']', arrayStart);
+  const block = html.slice(arrayStart, arrayEnd);
+  const entries = [...block.matchAll(/"progressive_url":"((?:[^"\\]|\\.)*)"[\s\S]*?"quality":"([^"]+)"/g)].map(
+    (m) => ({ url: decodeJsonEscapedString(m[1]), quality: m[2] })
+  );
+  if (!entries.length) return null;
+  entries.sort((a, b) => (b.quality === 'HD' ? 1 : 0) - (a.quality === 'HD' ? 1 : 0));
+  return entries[0].url;
+}
+
+// Pulls the numeric video id out of a Facebook video/Reel URL — /reel/<id>, /videos/<id>
+// (optionally under a group's /pcb.<n>/ path), or a /watch?v=<id> query param. Returns null
+// for URL shapes with no video id (permalink/photo posts), which just skip the progressive-url
+// lookup above.
+function extractVideoIdFromUrl(url) {
+  const m = /\/(?:reel|videos)\/(?:pcb\.\d+\/)?(\d+)/.exec(url) || /[?&]v=(\d+)/.exec(url);
+  return m ? m[1] : null;
+}
+
 // The post's creation time isn't in any og: tag, but it is embedded (once, as a
 // unix-seconds timestamp) in the page's hydration JSON alongside the story data,
 // e.g. `"story":{"creation_time":1451861194,"unpublished_content_type":"PUBLISHED"...}`.
@@ -377,14 +413,20 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
         // Reels/videos expose a direct (usually short-lived, signed) file URL here.
         // Posted as plain text it lets Discord's own unfurler render a playable
         // video, which a bot-built embed can't do (see buildEmbed below). Reels no
-        // longer set these og:video tags at all, so fall back to the browser_native
-        // lookaside URL embedded in the page (see extractBrowserNativeVideoUrl) —
-        // verified before use since that fallback isn't reliable (see verifyVideoUrl).
+        // longer set these og:video tags at all, so fall back (in order):
+        //  1. progressive_urls, only present with a logged-in `cookie` — a genuinely
+        //     playable signed CDN link (see extractProgressiveVideoUrl), trusted without
+        //     the HEAD check below since it isn't the flaky crawler stub that check
+        //     exists for.
+        //  2. the browser_native lookaside URL embedded in the page (see
+        //     extractBrowserNativeVideoUrl) — verified before use since, without a
+        //     cookie, it's the crawler-only stub that 500s for most requesters.
         const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
-        const browserNativeVideo = taggedVideo ? null : extractBrowserNativeVideoUrl(html);
+        const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, extractVideoIdFromUrl(url));
+        const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
         const browserNativeVideoOk =
           browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
-        const video = taggedVideo || (browserNativeVideoOk ? browserNativeVideo : null);
+        const video = taggedVideo || progressiveVideo || (browserNativeVideoOk ? browserNativeVideo : null);
         const engagement = extractEngagementCounts(html);
         data = {
           title: tags['og:title'] || '',
