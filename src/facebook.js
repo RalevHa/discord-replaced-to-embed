@@ -469,114 +469,156 @@ function extractEmbeddedPostData(html) {
  * that browser session instead of as Facebook's own crawler — gets the real page
  * (better odds of a working video URL) at the cost of using a real account to scrape.
  */
+// A single fetch-and-parse attempt, factored out of extractFacebookPost so a
+// login wall (see below) can be retried as a whole new request rather than
+// just given up on — a fresh request often lands on a real page next time
+// (observed: the same URL alternating between real content and a login wall
+// across back-to-back requests), unlike a genuinely dead post/cookie.
+async function attemptExtractFacebookPost(url, key, { skipVideoVerification, cookie }) {
+  const response = await fetchWithRetry(
+    key,
+    {
+      headers: cookie
+        ? {
+            // A logged-in request gets Facebook's bot-fingerprint check applied (the
+            // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
+            // gets a generic HTTP 400 "Error" page; needs the browser-signature
+            // headers Chrome itself sends alongside a real cookie to pass.
+            'User-Agent': BROWSER_USER_AGENT,
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Upgrade-Insecure-Requests': '1',
+            Cookie: cookie,
+          }
+        : {
+            'User-Agent': CRAWLER_USER_AGENT,
+            Accept: 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+      redirect: 'follow',
+    },
+    FETCH_TIMEOUT_MS
+  );
+
+  if (!response.ok) return { data: null, hitLoginWall: false };
+
+  const html = await response.text();
+  const { tags, images } = parseOgTags(html);
+  const ogHasContent = tags['og:title'] || tags['og:description'] || images.length;
+  // A /watch/?v= video page can have neither a caption nor a photo at all
+  // (extractEmbeddedPostData's fallback then finds nothing either) while
+  // still having a perfectly good video — checked separately so that case
+  // doesn't get thrown away before video extraction below even runs.
+  const hasVideoSignal =
+    Boolean(tags['og:video'] || tags['og:video:secure_url'] || tags['og:video:url']) ||
+    /browser_native_(?:hd|sd)_url/.test(html) ||
+    /dash_mpd_debug\.mpd\?v=/.test(html);
+  const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
+  const hitLoginWall = looksLikeLoginWall(tags);
+  if (!((ogHasContent || fallback || hasVideoSignal) && !hitLoginWall)) {
+    return { data: null, hitLoginWall };
+  }
+
+  const albumImages = extractAlbumImages(html);
+  const imageList = albumImages.length ? albumImages : images;
+  // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.
+  const allImages = imageList.length ? imageList.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
+  // Reels/videos expose a direct (usually short-lived, signed) file URL here.
+  // Posted as plain text it lets Discord's own unfurler render a playable
+  // video, which a bot-built embed can't do (see buildEmbed below). Reels no
+  // longer set these og:video tags at all, so fall back (in order):
+  //  1. progressive_urls, only present with a logged-in `cookie` — a genuinely
+  //     playable signed CDN link (see extractProgressiveVideoUrl), trusted without
+  //     the HEAD check below since it isn't the flaky crawler stub that check
+  //     exists for.
+  //  2. the browser_native lookaside URL embedded in the page (see
+  //     extractBrowserNativeVideoUrl) — verified before use since, without a
+  //     cookie, it's the crawler-only stub that 500s for most requesters.
+  const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
+  // A share/v/<code> link's own URL has no video id in it at all (an
+  // opaque short code) — it only shows up after Facebook's redirect
+  // resolves it to the real /reel/<id> or /videos/<id> URL, so this
+  // must read the id from where the fetch actually landed (response.url),
+  // not the URL that was requested. Still tries the requested url too,
+  // in case a redirect-less fetch left response.url exactly the same.
+  const videoId = extractVideoIdFromUrl(response.url) || extractVideoIdFromUrl(url);
+  const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
+  const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
+  const browserNativeVideoOk =
+    browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
+  const video = taggedVideo || progressiveVideo || (browserNativeVideoOk ? browserNativeVideo : null);
+  const engagement = extractEngagementCounts(html);
+  const data = {
+    title: tags['og:title'] || (fallback && fallback.author) || '',
+    description: tags['og:description'] || (fallback && fallback.description) || '',
+    image: allImages[0] || null,
+    images: allImages,
+    video,
+    siteName: tags['og:site_name'] || 'Facebook',
+    url: tags['og:url'] || key,
+    timestamp: extractPostTimestamp(html),
+    reactions: engagement.reactions,
+    comments: engagement.comments,
+    shares: engagement.shares,
+  };
+  return { data, hitLoginWall: false };
+}
+
+/**
+ * Fetch a Facebook URL and extract embeddable post data (title, description, image).
+ * Returns null if nothing usable came back (login wall, deleted post, network error).
+ * Results are cached for CACHE_TTL_MS so re-shares don't re-fetch.
+ *
+ * `skipVideoVerification`: post the browser_native lookaside URL without HEAD-checking
+ * it first. That endpoint genuinely 500s for some posts (Facebook-side, not fixable
+ * client-side) — verifying avoids showing a broken video player, but means those posts
+ * fall back to an image-only embed. Skipping trades that safety for more videos posted,
+ * some of which won't actually play.
+ *
+ * `cookie`: a logged-in session's Cookie header value. When set, fetches the post as
+ * that browser session instead of as Facebook's own crawler — gets the real page
+ * (better odds of a working video URL) at the cost of using a real account to scrape.
+ */
 async function extractFacebookPost(url, { skipVideoVerification = false, cookie = '' } = {}) {
   const key = normalizeUrl(url);
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.data;
 
   let data = null;
+  // A login wall often clears up on a fresh request a moment later (observed:
+  // the same URL alternating between real content and a login wall across
+  // back-to-back fetches) — worth one immediate retry. Skipped with a cookie:
+  // there a wall means that specific session is dead, not a transient block,
+  // so retrying just burns a request for the same failure (see the warning below).
+  const attempts = cookie ? 1 : 2;
   try {
-    const response = await fetchWithRetry(
-      key,
-      {
-        headers: cookie
-          ? {
-              // A logged-in request gets Facebook's bot-fingerprint check applied (the
-              // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
-              // gets a generic HTTP 400 "Error" page; needs the browser-signature
-              // headers Chrome itself sends alongside a real cookie to pass.
-              'User-Agent': BROWSER_USER_AGENT,
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Accept-Encoding': 'gzip, deflate, br',
-              'Sec-Fetch-Dest': 'document',
-              'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'none',
-              'Sec-Fetch-User': '?1',
-              'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
-              'Sec-Ch-Ua-Mobile': '?0',
-              'Sec-Ch-Ua-Platform': '"Windows"',
-              'Upgrade-Insecure-Requests': '1',
-              Cookie: cookie,
-            }
-          : {
-              'User-Agent': CRAWLER_USER_AGENT,
-              Accept: 'text/html,application/xhtml+xml',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-        redirect: 'follow',
-      },
-      FETCH_TIMEOUT_MS
-    );
-
-    if (response.ok) {
-      const html = await response.text();
-      const { tags, images } = parseOgTags(html);
-      const ogHasContent = tags['og:title'] || tags['og:description'] || images.length;
-      // A /watch/?v= video page can have neither a caption nor a photo at all
-      // (extractEmbeddedPostData's fallback then finds nothing either) while
-      // still having a perfectly good video — checked separately so that case
-      // doesn't get thrown away before video extraction below even runs.
-      const hasVideoSignal =
-        Boolean(tags['og:video'] || tags['og:video:secure_url'] || tags['og:video:url']) ||
-        /browser_native_(?:hd|sd)_url/.test(html) ||
-        /dash_mpd_debug\.mpd\?v=/.test(html);
-      const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
-      const hitLoginWall = looksLikeLoginWall(tags);
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const result = await attemptExtractFacebookPost(url, key, { skipVideoVerification, cookie });
+      if (result.data) {
+        data = result.data;
+        break;
+      }
+      if (!result.hitLoginWall) break;
       // A login wall with no cookie configured is normal (Facebook just doesn't
       // trust the plain crawler UA with everything) — silently falls through
       // to whatever a real request without one would see. With a cookie, it
       // means that specific session is dead (expired, logged out elsewhere,
       // checkpointed) and every fetch using it will now quietly degrade the
       // same way FACEBOOK_COOKIE being unset always has, until it's replaced.
-      if (cookie && hitLoginWall) {
+      if (cookie) {
         console.warn(
           `Facebook: FACEBOOK_COOKIE looks expired or invalid (hit a login wall fetching ${url}) — get a fresh cookie and update it`
         );
-      }
-      if ((ogHasContent || fallback || hasVideoSignal) && !hitLoginWall) {
-        const albumImages = extractAlbumImages(html);
-        const imageList = albumImages.length ? albumImages : images;
-        // Cap at 4 — Discord's own multi-image gallery grouping (see buildEmbed) tops out there.
-        const allImages = imageList.length ? imageList.slice(0, 4) : fallback && fallback.image ? [fallback.image] : [];
-        // Reels/videos expose a direct (usually short-lived, signed) file URL here.
-        // Posted as plain text it lets Discord's own unfurler render a playable
-        // video, which a bot-built embed can't do (see buildEmbed below). Reels no
-        // longer set these og:video tags at all, so fall back (in order):
-        //  1. progressive_urls, only present with a logged-in `cookie` — a genuinely
-        //     playable signed CDN link (see extractProgressiveVideoUrl), trusted without
-        //     the HEAD check below since it isn't the flaky crawler stub that check
-        //     exists for.
-        //  2. the browser_native lookaside URL embedded in the page (see
-        //     extractBrowserNativeVideoUrl) — verified before use since, without a
-        //     cookie, it's the crawler-only stub that 500s for most requesters.
-        const taggedVideo = tags['og:video:secure_url'] || tags['og:video:url'] || tags['og:video'];
-        // A share/v/<code> link's own URL has no video id in it at all (an
-        // opaque short code) — it only shows up after Facebook's redirect
-        // resolves it to the real /reel/<id> or /videos/<id> URL, so this
-        // must read the id from where the fetch actually landed (response.url),
-        // not the URL that was requested. Still tries the requested url too,
-        // in case a redirect-less fetch left response.url exactly the same.
-        const videoId = extractVideoIdFromUrl(response.url) || extractVideoIdFromUrl(url);
-        const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
-        const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
-        const browserNativeVideoOk =
-          browserNativeVideo && (skipVideoVerification || (await verifyVideoUrl(browserNativeVideo)));
-        const video = taggedVideo || progressiveVideo || (browserNativeVideoOk ? browserNativeVideo : null);
-        const engagement = extractEngagementCounts(html);
-        data = {
-          title: tags['og:title'] || (fallback && fallback.author) || '',
-          description: tags['og:description'] || (fallback && fallback.description) || '',
-          image: allImages[0] || null,
-          images: allImages,
-          video,
-          siteName: tags['og:site_name'] || 'Facebook',
-          url: tags['og:url'] || key,
-          timestamp: extractPostTimestamp(html),
-          reactions: engagement.reactions,
-          comments: engagement.comments,
-          shares: engagement.shares,
-        };
+      } else if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
   } catch (err) {
