@@ -430,10 +430,27 @@ function extractEmbeddedPostData(html) {
   const imageMatch = story
     ? /"photo_image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(story)
     : /"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(html);
-  if (!messageMatch && !imageMatch) return null;
+  // The author's display name (page or profile) never lands inside the single
+  // "story" object picked above — observed sitting several thousand chars away
+  // from the post's own feedback id, further than the 500-char default radius
+  // the engagement counts use, hence the wider one here. Other posts bundled on
+  // the same page (feed suggestions, comments) sit hundreds of thousands of
+  // chars further out, so this radius doesn't risk picking up their actor
+  // instead. Same no-feedback-id fallback as the message/image fields above.
+  // A plain post/photo exposes it under "actors"; a Reel exposes it under
+  // "owner" instead (no "actors" array at all) — try both shapes.
+  const NAME_PATTERN = /"actors":\[\{"__typename":"[^"]*","name":"((?:[^"\\]|\\.)*)"/;
+  const OWNER_NAME_PATTERN = /"owner":\{"__typename":"User"(?:,"[a-zA-Z_]+":"[^"]*")*,"name":"((?:[^"\\]|\\.)*)"/;
+  const nameMatch =
+    (feedbackId && findMatchNearId(html, feedbackId, NAME_PATTERN, 10000)) ||
+    (feedbackId && findMatchNearId(html, feedbackId, OWNER_NAME_PATTERN, 10000)) ||
+    NAME_PATTERN.exec(html) ||
+    OWNER_NAME_PATTERN.exec(html);
+  if (!messageMatch && !imageMatch && !nameMatch) return null;
   return {
     description: messageMatch ? decodeJsonEscapedString(messageMatch[1]) : '',
     image: imageMatch ? decodeJsonEscapedString(imageMatch[1]) : null,
+    author: nameMatch ? decodeJsonEscapedString(nameMatch[1]) : '',
   };
 }
 
@@ -548,7 +565,7 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
         const video = taggedVideo || progressiveVideo || (browserNativeVideoOk ? browserNativeVideo : null);
         const engagement = extractEngagementCounts(html);
         data = {
-          title: tags['og:title'] || '',
+          title: tags['og:title'] || (fallback && fallback.author) || '',
           description: tags['og:description'] || (fallback && fallback.description) || '',
           image: allImages[0] || null,
           images: allImages,

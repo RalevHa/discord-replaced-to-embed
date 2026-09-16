@@ -480,6 +480,51 @@ test("extractFacebookPost's caption fallback ignores an unrelated reel's message
   }
 });
 
+// Regression test: for a post with no og:title (the Comet SPA shell case, see
+// extractEmbeddedPostData), the author's display name never lands inside the
+// "story" object itself — it sits further away in the page, anchored to the
+// post's own feedback id like the caption fallback above, but needs a wider
+// proximity window since it's observed sitting thousands of chars out rather
+// than hundreds.
+test("extractFacebookPost falls back to the author's name (from the actors JSON near the post's feedback id) as the title when there is no og:title", async () => {
+  const padding = 'x'.repeat(12000); // pushes an unrelated actor outside the 10000-char window used for the name lookup
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"actors":[{"__typename":"User","name":"Some Other Page"}]}</script>
+    <!-- ${padding} -->
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz","attachments":[{"target":{"__typename":"Video"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz"}}</script>
+    <script>{"actors":[{"__typename":"User","name":"Chaisoro"}]}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('posts'));
+    assert.equal(data.title, 'Chaisoro');
+  } finally {
+    restore();
+  }
+});
+
+// Regression test: a Reel exposes its creator under a top-level "owner"
+// object instead of the "actors" array a plain post/photo uses — the actors
+// lookup above finds nothing there, so this must be tried as a second shape,
+// not assumed away.
+test("extractFacebookPost falls back to the owner's name (Reel shape) as the title when there is no og:title or actors array", async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz","attachments":[{"target":{"__typename":"Video"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz"}}</script>
+    <script>{"owner":{"__typename":"User","__isActor":"User","id":"1","name":"Beh Ngiep Seng","is_verified":true}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('reel'));
+    assert.equal(data.title, 'Beh Ngiep Seng');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost leaves video null when no og:video tag is present', async () => {
   const restore = mockFetch(`
     <html><head>
