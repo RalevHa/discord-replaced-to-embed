@@ -1,7 +1,7 @@
 ---
 title: Scraping video/caption/image/engagement out of Facebook's Comet SPA JSON
 category: api
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 
 ## Problem / context
@@ -71,6 +71,19 @@ Engagement counts come in two different shapes depending on post/page type, both
   repeating the feedback id next to its own `reaction_count`/`comment_rendering_instance...
   total_count`/`share_count` field.
 
+**Author name (used as the embed's title)**: when `og:title` is missing (the Comet shell
+case), the post's author/page name is *not* inside the single `"story":{...}` object either —
+it's a separate top-level fragment, found the same way as the caption (anchored on the post's
+own feedback id via `findMatchNearId`), but needs a much wider radius: observed sitting
+several **thousand** characters from the feedback id, not the ~100 the caption sits at. Two
+different shapes depending on post type, both need trying:
+- Plain post/photo: `"actors":[{"__typename":"...","name":"..."}]`.
+- Reel: no `actors` array at all — the creator is under a top-level
+  `"owner":{"__typename":"User",...,"name":"..."}` instead.
+A page also bundles *other* posts' actors/owners (feed suggestions, comments) — like the
+caption case, these sit **hundreds of thousands of characters away** in practice, so a
+generous (~10,000-char) radius still doesn't risk picking one up by accident.
+
 **Cookie health**: a login wall (`looksLikeLoginWall`) with no cookie configured is normal
 (Facebook just doesn't trust the plain crawler UA with everything) and should stay silent.
 A login wall *with* a cookie configured means that session has died (expired, logged out
@@ -116,6 +129,10 @@ explicitly so it's visible in logs instead of just looking like a mystery regres
   `lookaside.fbsbx.com` specifically, it really is broken for anyone but Facebook's own
   crawler infra (verified with plain `curl`, multiple UAs, immediate retries — consistently
   500/errors), so don't assume every verification failure is a false negative.
+- **A page's display name matching its own caption's hashtag verbatim is real, not a
+  mis-extraction** — confirmed live (a page literally named the same Thai phrase used as its
+  post's hashtag). Don't second-guess a correctly-anchored (feedback-id-scoped) match just
+  because the string also appears elsewhere on the page for an unrelated-looking reason.
 
 ## Related
 
