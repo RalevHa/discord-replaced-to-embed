@@ -367,6 +367,36 @@ test('extractFacebookPost reads the video id from the post-redirect URL for a /s
   }
 });
 
+// Regression test: a /share/v/<code> link inside a group redirects to a
+// /groups/<id>/permalink/<postId>/ URL instead of /reel/ or /videos/ — that
+// carries the *post's* id, not the video's, so extractVideoIdFromUrl has
+// nothing to match on either the requested or post-redirect URL. Without a
+// fallback the progressive_url lookup never starts (no id to anchor on) and
+// the post falls back to an image-only embed even though the page has a
+// genuine playable video. The fallback anchors on the post's own feedback id
+// instead and must ignore an unrelated video (e.g. a suggested "up next"
+// reel) bundled far away in the same page.
+test('extractFacebookPost finds the video id near the feedback id when the URL has none (group permalink)', async () => {
+  const farPadding = 'x'.repeat(60000);
+  const restore = mockFetch(
+    `
+    <html><head><meta property="og:title" content="A group post" /></head>
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz"}}</script>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=555&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/right.mp4","metadata":{"quality":"HD"}}]}</script>
+    ${farPadding}
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=777&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/wrong.mp4","metadata":{"quality":"HD"}}]}</script>
+    </html>
+  `,
+    { finalUrl: 'https://www.facebook.com/groups/999/permalink/123456/' }
+  );
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/share/v/groupshare1/?mibextid=x');
+    assert.equal(data.video, 'https://scontent.example/right.mp4');
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost sends a browser User-Agent and Cookie header when a cookie is configured', async () => {
   let sentHeaders;
   const restore = mockFetch('<html><head><meta property="og:title" content="A post"/></head></html>', {

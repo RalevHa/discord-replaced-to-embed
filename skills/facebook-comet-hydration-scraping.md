@@ -1,7 +1,7 @@
 ---
 title: Scraping video/caption/image/engagement out of Facebook's Comet SPA JSON
 category: api
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 ## Problem / context
@@ -46,6 +46,18 @@ requested.** A `/share/v/<code>/` link's own URL has no video id in it at all (a
 short code) — Facebook redirects it to the real `/reel/<id>/` or `/videos/<id>/` URL, and
 only `response.url` (after `redirect: 'follow'`) has it. Read the id from `response.url`
 first, falling back to the requested `url` only if that didn't resolve one.
+
+**A `/share/v/<code>/` link posted inside a group instead redirects to a
+`/groups/<id>/permalink/<postId>/` URL** — that carries the *post's* id, not the video's, so
+neither `response.url` nor the requested `url` has anything `extractVideoIdFromUrl`'s
+`/reel/`/`/videos/`/`?v=` patterns match. Without a fallback, `extractProgressiveVideoUrl`
+never even starts (no id to anchor on) and the post silently degrades to an image-only
+embed despite the page having a genuine playable video. `extractVideoIdNearFeedback`
+handles this: anchor on the post's own feedback id (same technique as the caption/
+reactions lookups) and take the nearest `dash_mpd_debug.mpd?v=<id>` to it — confirmed on a
+real page, the post's own video sits ~15,000 chars from its feedback id, an unrelated
+"up next" video 2,000,000+ chars away, so a 50,000-char radius safely picks only the
+right one.
 
 **A page can have a video with *no* caption, image, or `og:*` tags at all** (seen on
 `/watch/?v=` pages) — check for video presence (an `og:video*` tag, `browser_native_*_url`,
@@ -137,7 +149,7 @@ explicitly so it's visible in logs instead of just looking like a mystery regres
 ## Related
 
 - `src/facebook.js` — `extractFacebookPost`, `extractProgressiveVideoUrl`,
-  `extractVideoIdFromUrl`, `extractBrowserNativeVideoUrl`, `verifyVideoUrl`,
+  `extractVideoIdFromUrl`, `extractVideoIdNearFeedback`, `extractBrowserNativeVideoUrl`, `verifyVideoUrl`,
   `extractEmbeddedPostData`, `findFeedbackId`, `findMatchNearId`/`findNumberNearId`,
   `extractEngagementCounts`, `looksLikeLoginWall`.
 - `src/linkConversion.js` (`buildReplyPayloads`), `src/events/messageCreate.js`/

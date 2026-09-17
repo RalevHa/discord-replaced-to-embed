@@ -233,6 +233,21 @@ function extractVideoIdFromUrl(url) {
   return m ? m[1] : null;
 }
 
+// A /share/v/<code> link posted inside a group commonly redirects to a
+// /groups/<id>/permalink/<postId>/ URL, not /reel/ or /videos/ — that carries
+// the *post's* id, so extractVideoIdFromUrl above has nothing to match and
+// comes back empty even though the page itself has a genuine playable video.
+// Falls back to anchoring on the post's own feedback id instead (same
+// technique as the caption/reactions lookups) and taking the nearest
+// dash_mpd_debug id to it. Confirmed on a real page: the post's own video sits
+// ~15,000 chars from its feedback id, an unrelated "up next" video 2,000,000+
+// chars away — a 50,000-char radius safely picks only the right one.
+function extractVideoIdNearFeedback(html, feedbackId) {
+  if (!feedbackId) return null;
+  const m = findMatchNearId(html, feedbackId, /dash_mpd_debug\.mpd\?v=(\d+)/, 50000);
+  return m ? m[1] : null;
+}
+
 // The post's creation time isn't in any og: tag, but it is embedded (once, as a
 // unix-seconds timestamp) in the page's hydration JSON alongside the story data,
 // e.g. `"story":{"creation_time":1451861194,"unpublished_content_type":"PUBLISHED"...}`.
@@ -549,7 +564,13 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
   // must read the id from where the fetch actually landed (response.url),
   // not the URL that was requested. Still tries the requested url too,
   // in case a redirect-less fetch left response.url exactly the same.
-  const videoId = extractVideoIdFromUrl(response.url) || extractVideoIdFromUrl(url);
+  // A share/v/ link inside a group instead redirects to a /permalink/ URL,
+  // which has a post id but no video id at all — falls back to finding it
+  // in the page itself (see extractVideoIdNearFeedback).
+  const videoId =
+    extractVideoIdFromUrl(response.url) ||
+    extractVideoIdFromUrl(url) ||
+    extractVideoIdNearFeedback(html, findFeedbackId(html));
   const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
   const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
   const browserNativeVideoOk =
