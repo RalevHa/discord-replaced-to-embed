@@ -134,6 +134,26 @@ test('extractFacebookPost parses og:title/description/image', async () => {
   }
 });
 
+test('extractFacebookPost falls back to the shared link when og:url is a huge legacy caption-encoded permalink', async () => {
+  const hugeOgUrl = `https://www.facebook.com/Page/posts/${'%E0%B8%A5'.repeat(120)}/123456/`;
+  const restore = mockFetch(`
+    <html><head>
+      <meta property="og:title" content="Cool Post" />
+      <meta property="og:url" content="${hugeOgUrl}" />
+    </head></html>
+  `);
+  const postUrl = uniquePostUrl();
+  try {
+    const data = await extractFacebookPost(postUrl);
+    // Discord's API 500s when an embed's url is this long — see the comment
+    // on this fallback in facebook.js.
+    assert.ok(hugeOgUrl.length > 300);
+    assert.equal(data.url, postUrl);
+  } finally {
+    restore();
+  }
+});
+
 test('extractFacebookPost collects every og:image tag for a multi-photo post', async () => {
   const restore = mockFetch(`
     <html><head>

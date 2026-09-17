@@ -584,7 +584,11 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
     images: allImages,
     video,
     siteName: tags['og:site_name'] || 'Facebook',
-    url: tags['og:url'] || key,
+    // Some posts' og:url is a legacy-style permalink with the whole caption
+    // URL-encoded into the path (500+ chars of %XX-heavy text) — Discord's API
+    // 500s when asked to send an embed with a url that long, so fall back to
+    // the (short) link that was actually shared instead.
+    url: tags['og:url'] && tags['og:url'].length <= 300 ? tags['og:url'] : key,
     timestamp: extractPostTimestamp(html),
     reactions: engagement.reactions,
     comments: engagement.comments,
