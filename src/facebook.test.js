@@ -749,6 +749,24 @@ test('buildEmbed falls back to a generic description when none was extracted', (
   assert.equal(json.color, 0x1877f2);
 });
 
+test('buildEmbed caps the description well under Discord\'s 4096-char limit, with an ellipsis when truncated', () => {
+  // Discord's message-create API returns a 500 (not a validation error) once a
+  // long, multibyte-heavy description shares an embed with an image — see the
+  // comment above this cap in facebook.js. Confirmed against the real API.
+  const longDescription = 'ก'.repeat(3000);
+  const [embed] = buildEmbed({
+    title: 'Post',
+    description: longDescription,
+    image: 'https://scontent.example/photo.jpg',
+    images: ['https://scontent.example/photo.jpg'],
+    siteName: 'Facebook',
+    url: 'https://facebook.com/x',
+  });
+  const json = embed.toJSON();
+  assert.equal(json.description.length, 2048);
+  assert.ok(json.description.endsWith('…'));
+});
+
 test('buildEmbed omits the image when the post has a video — the video link\'s own preview already shows it', () => {
   const embeds = buildEmbed({
     title: 'A Reel',

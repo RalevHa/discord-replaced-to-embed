@@ -703,7 +703,14 @@ function buildEmbed(data) {
     .setFooter({ text: footerText });
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
-  embed.setDescription((data.description || '[View on Facebook]').slice(0, 4096));
+  // Discord's API 500s (not a 400 validation error — a genuine backend bug)
+  // once a long, multibyte-heavy description shares an embed with an image:
+  // confirmed empirically that a Thai-text description + one image starts
+  // failing around ~10KB of combined UTF-8 bytes, well under the documented
+  // 4096-character limit this used to allow. 2048 chars leaves a wide safety
+  // margin even for all-multibyte text.
+  const description = data.description || '[View on Facebook]';
+  embed.setDescription(description.length > 2048 ? `${description.slice(0, 2047)}…` : description);
 
   // A video post's thumbnail would just duplicate what the video link's own
   // preview already shows (see buildReplyPayloads in linkConversion.js) — skip
