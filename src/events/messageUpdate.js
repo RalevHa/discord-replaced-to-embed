@@ -11,6 +11,7 @@ const {
 const replyTracker = require('../replyTracker');
 const webhookRepost = require('../webhookRepost');
 const { DELETE_EMOJI } = require('../deleteReaction');
+const { logDiscordError } = require('../logDiscordError');
 
 module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   const { config, storage } = ctx;
@@ -89,7 +90,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
         await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
         return;
       } catch (err) {
-        console.error('Webhook repost failed, falling back to a normal reply:', err);
+        logDiscordError('Webhook repost failed, falling back to a normal reply:', err);
         // falls through to the normal suppress+reply path below
       }
     }
@@ -110,6 +111,6 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       await sentReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
     }
   } catch (err) {
-    console.error('Error processing message edit:', err);
+    logDiscordError('Error processing message edit:', err);
   }
 };
