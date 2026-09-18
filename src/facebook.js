@@ -233,6 +233,14 @@ function extractVideoIdFromUrl(url) {
   return m ? m[1] : null;
 }
 
+// Pulls the numeric photo id out of a Facebook photo permalink URL — /photo.php?fbid=<id>
+// or /photo/?fbid=<id> — for anchoring findPhotoImageByFbid below. Returns null for URL
+// shapes with no fbid (plain post/video links).
+function extractFbidFromUrl(url) {
+  const m = /[?&]fbid=(\d+)/.exec(url);
+  return m ? m[1] : null;
+}
+
 // A /share/v/<code> link posted inside a group commonly redirects to a
 // /groups/<id>/permalink/<postId>/ URL, not /reel/ or /videos/ — that carries
 // the *post's* id, so extractVideoIdFromUrl above has nothing to match and
@@ -407,7 +415,7 @@ function extractAlbumImages(html) {
 // og: tags at all — the crawler gets a blank <title>Facebook</title> page. The post's
 // caption and image are still present, though, as JSON embedded in a <script> blob
 // (React hydration data), so fall back to pulling them out of there directly.
-function extractEmbeddedPostData(html) {
+function extractEmbeddedPostData(html, fbid) {
   // Scoped to the post's own "story" object (same node extractPostTimestamp/
   // extractEngagementCounts read) when one's present — a page this shell-only
   // (logged-in fetch of a permalink/post) bundles dozens of unrelated "story"
@@ -441,9 +449,18 @@ function extractEmbeddedPostData(html) {
   // when there is one, so a different post's "photo_image" on the same page
   // can't be picked up instead. A route with no "story" object at all (see
   // above) has no such furniture to be confused with in the first place, so
-  // that case still falls back to the plain, unscoped "image" key.
+  // that case still falls back to the plain, unscoped "image" key. A
+  // /photo.php?fbid=... permalink's `story` object is real but never carries
+  // "photo_image" at all — its photo lives in a separate "Photo" GraphQL node
+  // elsewhere on the page, so that shape needs its own lookup (scoped to the
+  // node matching the fbid from the post's own URL, not just the nearest
+  // "image" key — the page also bundles unrelated Photo nodes, e.g. a
+  // suggested/related photo, that an unscoped search would just as easily hit).
+  const PHOTO_NODE_IMAGE_PATTERN = fbid
+    ? new RegExp(`"__isNode":"Photo","id":"${escapeRegExp(fbid)}"[\\s\\S]{0,1000}?"image":\\{"uri":"((?:[^"\\\\]|\\\\.)*)"`)
+    : null;
   const imageMatch = story
-    ? /"photo_image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(story)
+    ? /"photo_image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(story) || (PHOTO_NODE_IMAGE_PATTERN && PHOTO_NODE_IMAGE_PATTERN.exec(html))
     : /"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(html);
   // The author's display name (page or profile) never lands inside the single
   // "story" object picked above — observed sitting several thousand chars away
@@ -536,7 +553,9 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
     Boolean(tags['og:video'] || tags['og:video:secure_url'] || tags['og:video:url']) ||
     /browser_native_(?:hd|sd)_url/.test(html) ||
     /dash_mpd_debug\.mpd\?v=/.test(html);
-  const fallback = ogHasContent ? null : extractEmbeddedPostData(html);
+  const fallback = ogHasContent
+    ? null
+    : extractEmbeddedPostData(html, extractFbidFromUrl(response.url) || extractFbidFromUrl(url));
   const hitLoginWall = looksLikeLoginWall(tags);
   if (!((ogHasContent || fallback || hasVideoSignal) && !hitLoginWall)) {
     return { data: null, hitLoginWall };

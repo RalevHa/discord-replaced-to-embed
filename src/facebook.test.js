@@ -483,6 +483,29 @@ test('extractFacebookPost falls back to embedded JSON message/image when no og: 
   }
 });
 
+// Regression test: a /photo.php?fbid=... permalink page has a real (non-empty)
+// "story" fragment, but that fragment never carries "photo_image" at all — the
+// photo lives in a separate "Photo" GraphQL node elsewhere on the page. The old
+// code treated a present-but-photo_image-less story as "no photo", returning a
+// null image, rather than falling back to the fbid-anchored Photo node. The page
+// also bundles an unrelated Photo node (e.g. a suggested/related photo) with a
+// different id, which the fix must not pick up instead.
+test("extractFacebookPost's embedded-JSON fallback finds a /photo.php page's image via its fbid-matched Photo node when story has no photo_image", async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"story":{"id":"UzpfSTY6MjQ2ODg2MTQ1MDIwMTQyMA=="}}</script>
+    <script>{"__isNode":"Photo","id":"999888777","image":{"uri":"https:\\/\\/scontent.example\\/unrelated-suggested-photo.jpg"}}</script>
+    <script>{"__isNode":"Photo","id":"2468861450201420","image":{"uri":"https:\\/\\/scontent.example\\/real-photo.jpg"}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/photo.php?fbid=2468861450201420&set=a.123&type=3');
+    assert.equal(data.image, 'https://scontent.example/real-photo.jpg');
+  } finally {
+    restore();
+  }
+});
+
 // Regression test: a page fetched with a logged-in cookie (see extractFacebookPost's
 // `cookie` option) for a plain permalink post has no og:image at all (Comet SPA
 // shell), and bundles a "story" fragment for the viewer's OWN nav bookmark —
