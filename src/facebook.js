@@ -501,44 +501,65 @@ function extractEmbeddedPostData(html, fbid) {
  * that browser session instead of as Facebook's own crawler — gets the real page
  * (better odds of a working video URL) at the cost of using a real account to scrape.
  */
+// fb.watch/fb.com are share-shortlink hosts that 302 to the real facebook.com
+// URL — a cross-origin hop. Node's fetch (undici) drops the `Cookie` header
+// when auto-following a cross-origin redirect (confirmed empirically: the
+// exact same cookie/headers sent as two separate requests gets the real post
+// every time; letting fetch follow the redirect itself gets Facebook's
+// generic, logged-out "Discover popular videos" placeholder every time). Only
+// worth resolving by hand when a cookie is actually in play — the cookie-less
+// crawler path has no Cookie header to lose, and facebook.com URLs are
+// already same-origin so a normal follow is fine for those.
+const SHORTLINK_HOSTS = ['fb.watch', 'fb.com'];
+
+function isShortlinkUrl(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return SHORTLINK_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+async function resolveShortlinkRedirect(url, headers) {
+  const probe = await fetchWithRetry(url, { headers, redirect: 'manual' }, FETCH_TIMEOUT_MS);
+  const location = probe.headers.get('location');
+  return location ? new URL(location, url).toString() : url;
+}
+
 // A single fetch-and-parse attempt, factored out of extractFacebookPost so a
 // login wall (see below) can be retried as a whole new request rather than
 // just given up on — a fresh request often lands on a real page next time
 // (observed: the same URL alternating between real content and a login wall
 // across back-to-back requests), unlike a genuinely dead post/cookie.
 async function attemptExtractFacebookPost(url, key, { skipVideoVerification, cookie }) {
-  const response = await fetchWithRetry(
-    key,
-    {
-      headers: cookie
-        ? {
-            // A logged-in request gets Facebook's bot-fingerprint check applied (the
-            // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
-            // gets a generic HTTP 400 "Error" page; needs the browser-signature
-            // headers Chrome itself sends alongside a real cookie to pass.
-            'User-Agent': BROWSER_USER_AGENT,
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Upgrade-Insecure-Requests': '1',
-            Cookie: cookie,
-          }
-        : {
-            'User-Agent': CRAWLER_USER_AGENT,
-            Accept: 'text/html,application/xhtml+xml',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-      redirect: 'follow',
-    },
-    FETCH_TIMEOUT_MS
-  );
+  const headers = cookie
+    ? {
+        // A logged-in request gets Facebook's bot-fingerprint check applied (the
+        // plain crawler UA below skips it) — a bare UA + Cookie isn't enough and
+        // gets a generic HTTP 400 "Error" page; needs the browser-signature
+        // headers Chrome itself sends alongside a real cookie to pass.
+        'User-Agent': BROWSER_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Sec-Ch-Ua': '"Chromium";v="132", "Not(A:Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Upgrade-Insecure-Requests': '1',
+        Cookie: cookie,
+      }
+    : {
+        'User-Agent': CRAWLER_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      };
+  const fetchUrl = cookie && isShortlinkUrl(key) ? await resolveShortlinkRedirect(key, headers) : key;
+  const response = await fetchWithRetry(fetchUrl, { headers, redirect: 'follow' }, FETCH_TIMEOUT_MS);
 
   if (!response.ok) return { data: null, hitLoginWall: false };
 
