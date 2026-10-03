@@ -408,7 +408,32 @@ function extractAlbumImages(html) {
   const re = /"image":\{"uri":"((?:[^"\\]|\\.)*)"/g;
   let m;
   while ((m = re.exec(album))) images.push(decodeJsonEscapedString(m[1]));
+  if (images.length) return images;
+  // Logged-in pages list only bare Photo ids here (`{"media":{"__isNode":"Photo",
+  // "id":"..."}}`); each photo's uri sits in its own node elsewhere on the page,
+  // just before its `"id":"<id>"`.
+  const idRe = /"__isNode":"Photo","id":"(\d+)"/g;
+  const seen = new Set();
+  while ((m = idRe.exec(album))) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    const uri = findPhotoUriBeforeId(html, m[1]);
+    if (uri) images.push(uri);
+  }
   return images;
+}
+
+// The last `"image":{"uri":...}` within 1500 chars before `"id":"<id>"` that sits in a
+// Photo node's own body (`"__isMedia":"Photo"` / `"__isNode":"Photo"`).
+function findPhotoUriBeforeId(html, id) {
+  const needle = `"id":"${id}"`;
+  for (let at = html.indexOf(needle); at !== -1; at = html.indexOf(needle, at + 1)) {
+    const window = html.slice(Math.max(0, at - 1500), at);
+    const uris = [...window.matchAll(/"image":\{"uri":"((?:[^"\\]|\\.)*)"/g)];
+    if (uris.length && /"__isMedia":"Photo"/.test(html.slice(at, at + 200) + window.slice(-300)))
+      return decodeJsonEscapedString(uris[uris.length - 1][1]);
+  }
+  return null;
 }
 
 // Some routes (e.g. /photo?fbid=...) render the Comet SPA shell with no server-side

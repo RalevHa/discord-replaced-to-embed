@@ -506,6 +506,25 @@ test("extractFacebookPost's embedded-JSON fallback finds a /photo.php page's ima
   }
 });
 
+// Regression test: a logged-in album post lists only bare Photo ids in
+// "all_subattachments" (no image uri); each photo's uri sits in its own node
+// just before its id. Used to yield no image at all.
+test("extractFacebookPost resolves bare-id all_subattachments album photos to their own Photo nodes' images", async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"story":{"message":{"text":"Album post"},"all_subattachments":{"nodes":[{"media":{"__isNode":"Photo","id":"111"}},{"media":{"__isNode":"Photo","id":"222"}}]}}}</script>
+    <script>{"image":{"uri":"https:\\/\\/scontent.example\\/one.jpg"},"__isMedia":"Photo","id":"111","__isNode":"Photo"}</script>
+    <script>{"image":{"uri":"https:\\/\\/scontent.example\\/two.jpg"},"__isMedia":"Photo","id":"222","__isNode":"Photo"}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/someone/posts/pfbidAlbumIds');
+    assert.deepEqual(data.images, ['https://scontent.example/one.jpg', 'https://scontent.example/two.jpg']);
+  } finally {
+    restore();
+  }
+});
+
 // Regression test: a page fetched with a logged-in cookie (see extractFacebookPost's
 // `cookie` option) for a plain permalink post has no og:image at all (Comet SPA
 // shell), and bundles a "story" fragment for the viewer's OWN nav bookmark —
