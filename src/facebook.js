@@ -282,6 +282,14 @@ function findFeedbackId(html, story = extractJsonObject(html, /"story":\{/)) {
   return m ? m[1] : null;
 }
 
+// The first `"story":{` object on some group pages carries no feedback id, so
+// findFeedbackId comes back empty. A feedback id is just base64("feedback:<postId>"),
+// and the post id is right in a /permalink/<id>/ or /posts/<id>/ URL.
+function feedbackIdFromPostUrl(url) {
+  const m = /\/(?:permalink|posts)\/(\d+)/.exec(url);
+  return m ? Buffer.from(`feedback:${m[1]}`).toString('base64') : null;
+}
+
 function findMatchNearId(html, feedbackId, pattern, radius = 500) {
   for (const m of html.matchAll(new RegExp(escapeRegExp(feedbackId), 'g'))) {
     const start = Math.max(0, m.index - radius);
@@ -635,7 +643,7 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
   const videoId =
     extractVideoIdFromUrl(response.url) ||
     extractVideoIdFromUrl(url) ||
-    extractVideoIdNearFeedback(html, findFeedbackId(html));
+    extractVideoIdNearFeedback(html, findFeedbackId(html) || feedbackIdFromPostUrl(response.url));
   const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
   const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
   const browserNativeVideoOk =
