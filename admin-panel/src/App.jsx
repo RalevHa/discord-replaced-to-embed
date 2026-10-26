@@ -1,22 +1,42 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { api } from './api';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Guilds from './pages/Guilds';
 import EnvEditor from './pages/EnvEditor';
+import { Icon, Spinner, UIProvider } from './ui';
+
+const NAV = [
+  { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/guilds', label: 'Guilds', icon: 'server' },
+  { to: '/env', label: 'Environment', icon: 'terminal' },
+];
 
 function Layout({ onLogout }) {
   return (
-    <div className="app">
-      <nav>
-        <span className="brand">Bot Admin</span>
-        <Link to="/">Dashboard</Link>
-        <Link to="/guilds">Guilds</Link>
-        <Link to="/env">.env</Link>
-        <button onClick={onLogout}>Log out</button>
-      </nav>
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">
+            <Icon name="bot" size={18} />
+          </span>
+          <span className="brand-name">Bot Admin</span>
+        </div>
+        <nav>
+          {NAV.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} title={n.label}>
+              <Icon name={n.icon} />
+              <span>{n.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+        <button className="nav-logout" onClick={onLogout} title="Log out">
+          <Icon name="logout" />
+          <span>Log out</span>
+        </button>
+      </aside>
       <main>
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -60,15 +80,17 @@ export default function App() {
     setAuthenticated(false);
   }
 
-  if (authenticated === null) return <p className="loading">Loading…</p>;
+  if (authenticated === null) return <Spinner />;
 
   return (
-    <BrowserRouter basename="/admin">
-      {authenticated ? (
-        <Layout onLogout={logout} />
-      ) : (
-        <Login onLogin={login} onVerifyPasskey={verifyPasskey} onCancelPasskey={logout} />
-      )}
-    </BrowserRouter>
+    <UIProvider>
+      <BrowserRouter basename="/admin">
+        {authenticated ? (
+          <Layout onLogout={logout} />
+        ) : (
+          <Login onLogin={login} onVerifyPasskey={verifyPasskey} onCancelPasskey={logout} />
+        )}
+      </BrowserRouter>
+    </UIProvider>
   );
 }

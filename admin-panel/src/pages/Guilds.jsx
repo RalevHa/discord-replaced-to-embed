@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { ErrorNote, Icon, PageHeader, Spinner, Switch, useUI } from '../ui';
 
 // Shared shape for any "pick a channel to add/remove from a per-guild list"
 // panel — used for both the /roll-channel allowlist and the /ignore-channel
 // list so the two don't duplicate the same add/remove UI.
 function ChannelList({ guildId, list, add, remove, emptyText }) {
+  const { toast } = useUI();
   const [channels, setChannels] = useState([]);
   const [available, setAvailable] = useState([]);
   const [picked, setPicked] = useState('');
@@ -20,42 +22,52 @@ function ChannelList({ guildId, list, add, remove, emptyText }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guildId]);
 
-  async function handleAdd() {
-    if (!picked) return;
-    await add(guildId, picked);
-    setPicked('');
-    reload();
+  async function change(fn) {
+    try {
+      await fn();
+      reload();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   }
 
-  async function handleRemove(channelId) {
-    await remove(guildId, channelId);
-    reload();
+  async function handleAdd() {
+    if (!picked) return;
+    await change(() => add(guildId, picked));
+    setPicked('');
   }
 
   return (
-    <div className="roll-channels">
-      {error && <p className="error">{error}</p>}
-      <ul>
+    <div className="panel">
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <div className="chips">
         {channels.map((c) => (
-          <li key={c.id}>
-            #{c.name} <button onClick={() => handleRemove(c.id)}>Remove</button>
-          </li>
+          <span className="chip chip-removable" key={c.id}>
+            <Icon name="hash" size={12} />
+            {c.name}
+            <button aria-label={`Remove #${c.name}`} onClick={() => change(() => remove(guildId, c.id))}>
+              <Icon name="x" size={12} />
+            </button>
+          </span>
         ))}
-        {channels.length === 0 && <li className="dim">{emptyText}</li>}
-      </ul>
-      <select value={picked} onChange={(e) => setPicked(e.target.value)}>
-        <option value="">Add a channel…</option>
-        {available
-          .filter((c) => !channels.some((rc) => rc.id === c.id))
-          .map((c) => (
-            <option key={c.id} value={c.id}>
-              #{c.name}
-            </option>
-          ))}
-      </select>
-      <button onClick={handleAdd} disabled={!picked}>
-        Add
-      </button>
+        {channels.length === 0 && <span className="dim">{emptyText}</span>}
+      </div>
+      <div className="add-row">
+        <select value={picked} onChange={(e) => setPicked(e.target.value)}>
+          <option value="">Add a channel…</option>
+          {available
+            .filter((c) => !channels.some((rc) => rc.id === c.id))
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                #{c.name}
+              </option>
+            ))}
+        </select>
+        <button className="btn btn-primary" onClick={handleAdd} disabled={!picked}>
+          <Icon name="plus" size={15} />
+          Add
+        </button>
+      </div>
     </div>
   );
 }
@@ -85,6 +97,7 @@ function IgnoredChannels({ guildId }) {
 }
 
 function FixerPanel({ guildId }) {
+  const { toast } = useUI();
   const [fixers, setFixers] = useState(null);
   const [error, setError] = useState('');
 
@@ -94,18 +107,17 @@ function FixerPanel({ guildId }) {
 
   useEffect(reload, [guildId]);
 
-  async function pick(label, host) {
-    await api.setGuildFixer(guildId, label, host);
-    reload();
+  async function change(fn) {
+    try {
+      await fn();
+      reload();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   }
 
-  async function reset(label) {
-    await api.resetGuildFixer(guildId, label);
-    reload();
-  }
-
-  if (error) return <p className="error">{error}</p>;
-  if (!fixers) return <p className="loading">Loading…</p>;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!fixers) return <Spinner />;
 
   return (
     <div className="fixer-grid">
@@ -114,7 +126,7 @@ function FixerPanel({ guildId }) {
           <div className="fixer-card-head">
             <span className="fixer-label">{f.label}</span>
             {f.host !== f.default && (
-              <button className="link-button" onClick={() => reset(f.label)}>
+              <button className="link-button" onClick={() => change(() => api.resetGuildFixer(guildId, f.label))}>
                 Reset
               </button>
             )}
@@ -124,7 +136,7 @@ function FixerPanel({ guildId }) {
               <button
                 key={host}
                 className={`pill${host === f.host ? ' pill-active' : ''}`}
-                onClick={() => pick(f.label, host)}
+                onClick={() => change(() => api.setGuildFixer(guildId, f.label, host))}
               >
                 {host}
               </button>
@@ -136,11 +148,66 @@ function FixerPanel({ guildId }) {
   );
 }
 
+const TABS = [
+  { key: 'roll', label: 'Roll channels', count: (g) => g.rollChannelCount, Panel: RollChannels },
+  { key: 'ignored', label: 'Ignored channels', count: (g) => g.ignoredChannelCount, Panel: IgnoredChannels },
+  { key: 'fixers', label: 'Fixers', Panel: FixerPanel },
+];
+
+function GuildCard({ guild: g, onChange }) {
+  const [tab, setTab] = useState(null);
+  const active = TABS.find((t) => t.key === tab);
+
+  return (
+    <article className={`guild card${g.disabled ? ' guild-off' : ''}`}>
+      <div className="guild-main">
+        <span className="guild-avatar">{g.name.trim().charAt(0).toUpperCase() || '?'}</span>
+        <div className="grow">
+          <h3 className="guild-name">{g.name}</h3>
+          <span className="dim mono">{g.id}</span>
+        </div>
+        <div className="toggles">
+          <label>
+            <span>Link conversion</span>
+            <Switch
+              checked={!g.disabled}
+              label={`Link conversion for ${g.name}`}
+              onChange={() => onChange(() => api.setGuildDisabled(g.id, !g.disabled))}
+            />
+          </label>
+          <label>
+            <span>Webhook repost</span>
+            <Switch
+              checked={!!g.webhookRepostEnabled}
+              label={`Webhook repost for ${g.name}`}
+              onChange={() => onChange(() => api.setGuildWebhookRepost(g.id, !g.webhookRepostEnabled))}
+            />
+          </label>
+        </div>
+      </div>
+      <div className="tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={tab === t.key ? 'active' : ''}
+            onClick={() => setTab(tab === t.key ? null : t.key)}
+          >
+            {t.label}
+            {t.count && <span className="count">{t.count(g)}</span>}
+          </button>
+        ))}
+      </div>
+      {active && <active.Panel guildId={g.id} />}
+    </article>
+  );
+}
+
 export default function Guilds() {
+  const { toast } = useUI();
   const [guilds, setGuilds] = useState(null);
-  const [expanded, setExpanded] = useState(null);
-  const [expandedFixers, setExpandedFixers] = useState(null);
-  const [expandedIgnored, setExpandedIgnored] = useState(null);
+  const [query, setQuery] = useState('');
   const [error, setError] = useState('');
 
   function reload() {
@@ -149,85 +216,37 @@ export default function Guilds() {
 
   useEffect(reload, []);
 
-  async function toggle(guild) {
-    await api.setGuildDisabled(guild.id, !guild.disabled);
-    reload();
+  async function change(fn) {
+    try {
+      await fn();
+      reload();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   }
 
-  async function toggleWebhookRepost(guild) {
-    await api.setGuildWebhookRepost(guild.id, !guild.webhookRepostEnabled);
-    reload();
-  }
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!guilds) return <Spinner />;
 
-  if (error) return <p className="error">{error}</p>;
-  if (!guilds) return <p className="loading">Loading…</p>;
+  const shown = guilds.filter((g) => g.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
-    <div className="card">
-      <h2>Guilds</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Server</th>
-            <th>Link conversion</th>
-            <th>Webhook repost</th>
-            <th>Roll channels</th>
-            <th>Ignored channels</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {guilds.map((g) => (
-            <Fragment key={g.id}>
-              <tr>
-                <td>{g.name}</td>
-                <td>
-                  <button onClick={() => toggle(g)}>{g.disabled ? 'Enable' : 'Disable'}</button>
-                </td>
-                <td>
-                  <button onClick={() => toggleWebhookRepost(g)}>
-                    {g.webhookRepostEnabled ? 'Disable' : 'Enable'}
-                  </button>
-                </td>
-                <td>{g.rollChannelCount}</td>
-                <td>{g.ignoredChannelCount}</td>
-                <td>
-                  <button onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
-                    {expanded === g.id ? 'Hide' : 'Manage roll channels'}
-                  </button>{' '}
-                  <button onClick={() => setExpandedIgnored(expandedIgnored === g.id ? null : g.id)}>
-                    {expandedIgnored === g.id ? 'Hide' : 'Manage ignored channels'}
-                  </button>{' '}
-                  <button onClick={() => setExpandedFixers(expandedFixers === g.id ? null : g.id)}>
-                    {expandedFixers === g.id ? 'Hide' : 'Manage fixers'}
-                  </button>
-                </td>
-              </tr>
-              {expanded === g.id && (
-                <tr>
-                  <td colSpan={6}>
-                    <RollChannels guildId={g.id} />
-                  </td>
-                </tr>
-              )}
-              {expandedIgnored === g.id && (
-                <tr>
-                  <td colSpan={6}>
-                    <IgnoredChannels guildId={g.id} />
-                  </td>
-                </tr>
-              )}
-              {expandedFixers === g.id && (
-                <tr>
-                  <td colSpan={6}>
-                    <FixerPanel guildId={g.id} />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+    <div className="page">
+      <PageHeader title="Guilds" subtitle={`${guilds.length} server${guilds.length === 1 ? '' : 's'} using the bot`}>
+        <div className="input-icon search">
+          <Icon name="search" size={16} />
+          <input
+            placeholder="Search servers…"
+            aria-label="Search servers"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      </PageHeader>
+      {shown.map((g) => (
+        <GuildCard key={g.id} guild={g} onChange={change} />
+      ))}
+      {shown.length === 0 && <p className="dim center">No servers match “{query}”.</p>}
     </div>
   );
 }
