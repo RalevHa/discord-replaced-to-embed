@@ -572,6 +572,29 @@ test("extractFacebookPost's caption fallback ignores an unrelated reel's message
   }
 });
 
+// Regression test: the post's own caption can be serialised as
+// "message":{"__typename":"TextWithEntities","text":...} (a post with links/
+// entities in it) — with "__typename" ahead of "text", a pattern that only
+// accepted "message":{"text": missed it and fell through to the whole page,
+// returning an unrelated feed post's caption instead.
+test("extractFacebookPost reads a caption whose message node has a __typename before text, not another post's caption", async () => {
+  const padding = 'x'.repeat(1000);
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"message":{"text":"Unrelated feed post caption"}}</script>
+    <!-- ${padding} -->
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz","attachments":[{"target":{"__typename":"Photo"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz","message":{"__typename":"TextWithEntities","text":"The real caption"}}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('typename'));
+    assert.equal(data.description, 'The real caption');
+  } finally {
+    restore();
+  }
+});
+
 // Regression test: for a post with no og:title (the Comet SPA shell case, see
 // extractEmbeddedPostData), the author's display name never lands inside the
 // "story" object itself — it sits further away in the page, anchored to the

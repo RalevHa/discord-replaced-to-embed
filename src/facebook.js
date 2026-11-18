@@ -469,7 +469,9 @@ function extractEmbeddedPostData(html, fbid) {
   // did) return a different reel's caption instead of this post's own. Only a
   // route with no feedback id at all (e.g. /photo?fbid=..., the original case
   // this fallback was built for) falls back to that unscoped search.
-  const MESSAGE_PATTERN = /"message":\{"text":"((?:[^"\\]|\\.)*)"/;
+  // The node is sometimes {"__typename":"TextWithEntities","text":...} instead of
+  // a bare {"text":...} — missing that shape sends the lookup to the whole page.
+  const MESSAGE_PATTERN = /"message":\{(?:"__typename":"TextWithEntities",)?"text":"((?:[^"\\]|\\.)*)"/;
   const feedbackId = findFeedbackId(html, story);
   const messageMatch =
     (story && MESSAGE_PATTERN.exec(story)) ||
