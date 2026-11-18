@@ -5,7 +5,7 @@
 // builds a native Discord embed from the extracted Open Graph tags. No credentials,
 // no headless browser, no external service required.
 
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { isInSpoiler } = require('./rules');
 
 // Matches facebook.com / fb.watch / fb.com links, scheme and subdomains optional —
@@ -298,6 +298,17 @@ function findMatchNearId(html, feedbackId, pattern, radius = 500) {
     if (found) return found;
   }
   return null;
+}
+
+// The poster's profile/page URL for the "View profile" button. A logged-in page
+// lists it under the post's own "actors" (found near its feedback id, same
+// proximity trick as the author name). The cookie-less crawler page has no such
+// JSON, but a page post's own URL (/<page>/posts/...) already names the page.
+function extractProfileUrl(html, feedbackId, postUrl) {
+  const actor = feedbackId && findMatchNearId(html, feedbackId, /"actors":\[\{[^\]]*?"url":"((?:[^"\\]|\\.)*)"/, 10000);
+  if (actor) return decodeJsonEscapedString(actor[1]);
+  const m = /^\/([^/?]+)\/(?:posts|videos|photos|reels?)\//.exec(new URL(postUrl, 'https://www.facebook.com').pathname);
+  return m ? `https://www.facebook.com/${m[1]}` : null;
 }
 
 function findNumberNearId(html, feedbackId, pattern, radius = 500) {
@@ -665,6 +676,11 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
     // the (short) link that was actually shared instead.
     url: tags['og:url'] && tags['og:url'].length <= 300 ? tags['og:url'] : key,
     timestamp: extractPostTimestamp(html),
+    profileUrl: extractProfileUrl(
+      html,
+      findFeedbackId(html) || feedbackIdFromPostUrl(response.url),
+      tags['og:url'] || response.url
+    ),
     reactions: engagement.reactions,
     comments: engagement.comments,
     shares: engagement.shares,
@@ -729,18 +745,6 @@ async function extractFacebookPost(url, { skipVideoVerification = false, cookie 
   return data;
 }
 
-// Discord's native embed.setTimestamp() renders in each viewer's own locale/timezone,
-// which would show a different clock time to every reader — not what "UTC+7" means.
-// Format it once, fixed to Bangkok time, and label it explicitly instead.
-function formatUtc7(ms) {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Bangkok',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    hour12: false,
-  }).format(ms);
-}
-
 // Matches Facebook's own og:title abbreviation style (e.g. "20K") closely enough for
 // a compact footer line — one decimal place, trimmed when it'd just be ".0".
 function humanFormat(n) {
@@ -759,7 +763,7 @@ function engagementLine(data) {
   if (data.reactions != null) parts.push(`❤️ ${humanFormat(data.reactions)}`);
   if (data.comments != null) parts.push(`💬 ${humanFormat(data.comments)}`);
   if (data.shares != null) parts.push(`🔁 ${humanFormat(data.shares)}`);
-  return parts.length ? parts.join(' • ') : null;
+  return parts.length ? parts.join(' · ') : null;
 }
 
 /** Build Discord embed(s) from extracted post data. Extra photos (beyond the
@@ -767,15 +771,18 @@ function engagementLine(data) {
  * groups same-URL embeds into one gallery grid, up to 4 images. */
 function buildEmbed(data) {
   const siteName = data.siteName || 'Facebook';
-  const dateLine = data.timestamp ? `${siteName} • ${formatUtc7(data.timestamp)} (UTC+7)` : siteName;
-
-  const engagement = engagementLine(data);
-  const footerText = engagement ? `${dateLine}\n${engagement}` : dateLine;
 
   const embed = new EmbedBuilder()
     .setColor(0x1877f2) // Facebook blue
     .setURL(data.url)
-    .setFooter({ text: footerText });
+    .setFooter({ text: siteName });
+
+  // A footer can't render Discord timestamps, so counts + post time ride in a
+  // field instead: <t:epoch:f> shows in each viewer's own locale/timezone.
+  const stats = [engagementLine(data), data.timestamp ? `<t:${Math.floor(data.timestamp / 1000)}:f>` : null]
+    .filter(Boolean)
+    .join(' · ');
+  if (stats) embed.addFields({ name: '\u200b', value: stats });
 
   if (data.title) embed.setTitle(data.title.slice(0, 256));
   // Discord's API 500s (not a 400 validation error — a genuine backend bug)
@@ -797,6 +804,17 @@ function buildEmbed(data) {
   return [embed, ...galleryEmbeds];
 }
 
+/** Link-button row under a post's embed: open the post, and (when known) its poster's profile. */
+function buildButtons(data) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open on Facebook').setURL(data.url)
+  );
+  if (data.profileUrl) {
+    row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('View profile').setURL(data.profileUrl));
+  }
+  return row;
+}
+
 /** Opaque path segment for the video-proxy route (see facebookProxy.js). */
 function encodeProxyPath(facebookUrl) {
   return Buffer.from(facebookUrl, 'utf8').toString('base64url');
@@ -813,6 +831,7 @@ module.exports = {
   spoilerFixUrl,
   extractFacebookPost,
   buildEmbed,
+  buildButtons,
   engagementLine,
   normalizeUrl,
   encodeProxyPath,

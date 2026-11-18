@@ -47,7 +47,7 @@ async function getOrCreateWebhook(channel) {
  * the original. Throws on any failure before the original is touched — the
  * caller falls back to a normal reply in that case.
  * @param {import('discord.js').Message} message
- * @param {{ content: string, embeds: object[], hasVideo?: boolean }} payload
+ * @param {{ content: string, embeds: object[], components?: object[], hasVideo?: boolean }} payload
  *   `hasVideo`: `content` contains a Facebook video/proxy link that needs
  *   Discord's own auto-unfurl to play inline — which Discord skips for any
  *   message sent with its own non-empty `embeds` (see buildReplyPayloads in
@@ -58,7 +58,7 @@ async function getOrCreateWebhook(channel) {
  *   carrying `content` (tracked for the delete-reaction; the follow-up embed
  *   post, if any, is tracked too but isn't returned)
  */
-async function repost(message, { content, embeds, hasVideo = false }, storage) {
+async function repost(message, { content, embeds, components = [], hasVideo = false }, storage) {
   const channel = message.channel;
   // Webhooks belong to a text channel, not a thread — a thread's messages are
   // sent through its parent's webhook with `threadId` set.
@@ -84,6 +84,7 @@ async function repost(message, { content, embeds, hasVideo = false }, storage) {
     try {
       const extraSent = await webhook.send({
         embeds,
+        components,
         username: displayName,
         avatarURL,
         allowedMentions: { parse: [] },
@@ -100,6 +101,7 @@ async function repost(message, { content, embeds, hasVideo = false }, storage) {
     sent = await webhook.send({
       content,
       embeds: splitEmbeds ? [] : embeds,
+      components: splitEmbeds ? [] : components,
       username: displayName,
       avatarURL,
       files: [...message.attachments.values()],

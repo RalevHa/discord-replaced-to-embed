@@ -34,7 +34,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
   const existingReply = existingReplyId
     ? await message.channel.messages.fetch(existingReplyId).catch(() => null)
     : null;
-  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, facebookComponents, newText, facebookVideoLinks } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -67,9 +67,10 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       await existingReply.edit({
         content: textLinks.length ? textLinks.join('\n') : '',
         embeds: needsSplit ? [] : facebookEmbeds,
+        components: needsSplit ? [] : facebookComponents,
       });
       if (needsSplit) {
-        const extraReply = await message.reply({ embeds: facebookEmbeds, allowedMentions: { repliedUser: false } });
+        const extraReply = await message.reply({ embeds: facebookEmbeds, components: facebookComponents, allowedMentions: { repliedUser: false } });
         await extraReply.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
       }
       return;
@@ -84,7 +85,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
       try {
         const repost = await webhookRepost.repost(
           message,
-          { content: newText, embeds: facebookEmbeds, hasVideo: facebookVideoLinks.length > 0 },
+          { content: newText, embeds: facebookEmbeds, components: facebookComponents, hasVideo: facebookVideoLinks.length > 0 },
           storage
         );
         await repost.react(DELETE_EMOJI).catch((err) => console.error('Failed to add delete reaction:', err));
@@ -97,7 +98,7 @@ module.exports = async function messageUpdate(oldMessage, newMessage, ctx) {
 
     await message.suppressEmbeds(true);
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
-    const payloads = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
+    const payloads = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks, facebookComponents);
     // Track the content-carrying reply specifically — see messageCreate.js's
     // matching comment; the edit-sync branch above depends on this being the
     // one that actually holds the converted link(s).

@@ -44,7 +44,7 @@ module.exports = async function messageCreate(message, ctx) {
   // Skip channels an admin excluded via /ignore-channel — /convert still works there.
   if (storage.isChannelIgnored(message.guild.id, message.channel.id)) return;
 
-  const { replaced, textLinks, facebookEmbeds, newText, facebookVideoLinks } = await buildConversion(
+  const { replaced, textLinks, facebookEmbeds, facebookComponents, newText, facebookVideoLinks } = await buildConversion(
     message.content,
     config,
     storage.getFixerOverrides(message.guild.id)
@@ -57,7 +57,7 @@ module.exports = async function messageCreate(message, ctx) {
     try {
       const repost = await webhookRepost.repost(
         message,
-        { content: newText, embeds: facebookEmbeds, hasVideo: facebookVideoLinks.length > 0 },
+        { content: newText, embeds: facebookEmbeds, components: facebookComponents, hasVideo: facebookVideoLinks.length > 0 },
         storage
       );
       // Best-effort: a one-click delete affordance, not required for the
@@ -78,7 +78,7 @@ module.exports = async function messageCreate(message, ctx) {
     // an inline player when the message carrying it has no embeds of its own.
     await message.suppressEmbeds(true);
     await delay(SUPPRESS_PROPAGATION_DELAY_MS);
-    const payloads = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks);
+    const payloads = buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks, facebookComponents);
     // Track the content-carrying reply specifically, not just whichever one
     // happens to go out first — buildReplyPayloads sends the info embed ahead
     // of the video link, but messageUpdate's edit-sync (and this file's own

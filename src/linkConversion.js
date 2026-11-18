@@ -28,6 +28,8 @@ async function buildConversion(content, config, overrides = {}) {
     : { newText: content, replaced: [] };
 
   const facebookEmbeds = [];
+  // One link-button row per post (Discord allows 5 rows per message, we cap at 4 posts).
+  const facebookComponents = [];
   // Genuinely new content in both modes — a video/CDN URL, never the raw
   // original facebook.com URL — so appending these is always safe: neither
   // reply nor webhook-repost content already contains it verbatim.
@@ -81,7 +83,10 @@ async function buildConversion(content, config, overrides = {}) {
       // Discord caps a message at 10 embeds total; multiple multi-photo posts
       // in one message could otherwise exceed that and get the reply rejected.
       const room = 10 - facebookEmbeds.length;
-      if (room > 0) facebookEmbeds.push(...facebook.buildEmbed(data).slice(0, room));
+      if (room > 0) {
+        facebookEmbeds.push(...facebook.buildEmbed(data).slice(0, room));
+        facebookComponents.push(facebook.buildButtons(data));
+      }
       replaced.push({ label: 'Facebook' });
     }
   }
@@ -104,15 +109,16 @@ async function buildConversion(content, config, overrides = {}) {
     ? facebook.rewriteFacebookLinksForRepost(newText, facebookMatches, videoLinkByUrl)
     : newText;
 
-  return { replaced, textLinks, facebookEmbeds, newText: webhookSafeText, facebookVideoLinks };
+  return { replaced, textLinks, facebookEmbeds, facebookComponents, newText: webhookSafeText, facebookVideoLinks };
 }
 
 /** Payload for a brand-new reply — omits empty keys since Discord rejects a
  * totally-empty message (content:'' with no embeds/attachments). */
-function buildReplyPayload(textLinks, facebookEmbeds) {
+function buildReplyPayload(textLinks, facebookEmbeds, facebookComponents = []) {
   return {
     ...(textLinks.length ? { content: textLinks.join('\n') } : {}),
     ...(facebookEmbeds.length ? { embeds: facebookEmbeds } : {}),
+    ...(facebookComponents.length ? { components: facebookComponents } : {}),
     allowedMentions: { repliedUser: false },
   };
 }
@@ -128,11 +134,11 @@ function buildReplyPayload(textLinks, facebookEmbeds) {
  * actually unfurls. Any other combination (an embed with no video, a video
  * with no embed, plain text links) is unaffected and stays a single message.
  */
-function buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks) {
+function buildReplyPayloads(textLinks, facebookEmbeds, facebookVideoLinks, facebookComponents = []) {
   if (facebookVideoLinks.length && facebookEmbeds.length) {
-    return [buildReplyPayload([], facebookEmbeds), buildReplyPayload(textLinks, [])];
+    return [buildReplyPayload([], facebookEmbeds, facebookComponents), buildReplyPayload(textLinks, [])];
   }
-  return [buildReplyPayload(textLinks, facebookEmbeds)];
+  return [buildReplyPayload(textLinks, facebookEmbeds, facebookComponents)];
 }
 
 // Shared guard: skip bot messages, DMs, and guilds outside the allowlist.

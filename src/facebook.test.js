@@ -6,6 +6,7 @@ const {
   normalizeUrl,
   extractFacebookPost,
   buildEmbed,
+  buildButtons,
   encodeProxyPath,
   decodeProxyPath,
   rewriteFacebookLinksForRepost,
@@ -785,18 +786,23 @@ test('encodeProxyPath produces a URL-safe path segment', () => {
   assert.match(encoded, /^[A-Za-z0-9_-]+$/);
 });
 
-test('buildEmbed shows the post date fixed to UTC+7 in the footer, labeled as such', () => {
+test('buildEmbed shows counts and the post time as a Discord timestamp in a field, footer is the site name', () => {
   const [embed] = buildEmbed({
     title: 'Mark Zuckerberg',
     description: '',
     siteName: 'Facebook',
     url: 'https://facebook.com/x',
-    timestamp: 1451861194000, // 2016-01-03T22:46:34Z -> 2016-01-04 05:46 in UTC+7
+    timestamp: 1451861194000,
+    reactions: 7495,
+    comments: 572,
+    shares: 203,
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook • 4 Jan 2016, 05:46 (UTC+7)');
+  const json = embed.toJSON();
+  assert.equal(json.footer.text, 'Facebook');
+  assert.equal(json.fields[0].value, '❤️ 7.5K · 💬 572 · 🔁 203 · <t:1451861194:f>');
 });
 
-test('buildEmbed footer is just the site name when no post date was found', () => {
+test('buildEmbed has no stats field when there are no counts and no post date', () => {
   const [embed] = buildEmbed({
     title: '',
     description: '',
@@ -804,7 +810,46 @@ test('buildEmbed footer is just the site name when no post date was found', () =
     url: 'https://facebook.com/x',
     timestamp: null,
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook');
+  assert.equal(embed.toJSON().fields, undefined);
+});
+
+test('buildButtons gives Open on Facebook, plus View profile only when the profile URL is known', () => {
+  const both = buildButtons({ url: 'https://facebook.com/p/1', profileUrl: 'https://www.facebook.com/p' }).toJSON();
+  assert.deepEqual(
+    both.components.map((c) => [c.label, c.url]),
+    [
+      ['Open on Facebook', 'https://facebook.com/p/1'],
+      ['View profile', 'https://www.facebook.com/p'],
+    ]
+  );
+  assert.equal(buildButtons({ url: 'https://facebook.com/p/1', profileUrl: null }).toJSON().components.length, 1);
+});
+
+test('extractFacebookPost finds the profile URL from actors JSON near the feedback id', async () => {
+  const restore = mockFetch(`
+    <html><head><title>Facebook</title></head>
+    <script>{"story":{"id":"ZmVlZGJhY2s6MTIz","message":{"text":"Hi"},"attachments":[{"target":{"__typename":"Photo"}}]}}</script>
+    <script>{"feedback":{"id":"ZmVlZGJhY2s6MTIz"},"actors":[{"__typename":"User","__isEntity":"User","url":"https:\\/\\/www.facebook.com\\/somepage","id":"9"}]}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('profile'));
+    assert.equal(data.profileUrl, 'https://www.facebook.com/somepage');
+  } finally {
+    restore();
+  }
+});
+
+test('extractFacebookPost falls back to the page name in a /<page>/posts/ URL for the profile URL', async () => {
+  const restore = mockFetch(`
+    <html><head><meta property="og:title" content="T"><meta property="og:url" content="https://www.facebook.com/hibycom/posts/abc/123/"></head></html>
+  `);
+  try {
+    const data = await extractFacebookPost(uniquePostUrl('profile-fallback'));
+    assert.equal(data.profileUrl, 'https://www.facebook.com/hibycom');
+  } finally {
+    restore();
+  }
 });
 
 test('buildEmbed falls back to a generic description when none was extracted', () => {
@@ -858,7 +903,7 @@ test('buildEmbed still shows the image for a photo-only post (no video)', () => 
   assert.equal(embed.toJSON().image.url, 'https://scontent.example/thumb.jpg');
 });
 
-test('buildEmbed appends a compact emoji engagement line to the footer when counts are present', () => {
+test('buildEmbed puts a compact emoji engagement line in the stats field when counts are present', () => {
   const [embed] = buildEmbed({
     title: 'A post',
     description: '',
@@ -869,10 +914,10 @@ test('buildEmbed appends a compact emoji engagement line to the footer when coun
     comments: 174,
     shares: 386,
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook\n❤️ 20.3K • 💬 174 • 🔁 386');
+  assert.equal(embed.toJSON().fields[0].value, '❤️ 20.3K · 💬 174 · 🔁 386');
 });
 
-test('buildEmbed leaves the footer as just the date/site line when no engagement counts were extracted', () => {
+test('buildEmbed leaves the footer as just the site name when no engagement counts were extracted', () => {
   const [embed] = buildEmbed({
     title: 'A post',
     description: '',
@@ -896,18 +941,18 @@ test('buildEmbed shows reactions/comments without a shares segment when shares i
     comments: 174,
     shares: null,
   });
-  assert.equal(embed.toJSON().footer.text, 'Facebook\n❤️ 20.3K • 💬 174');
+  assert.equal(embed.toJSON().fields[0].value, '❤️ 20.3K · 💬 174');
 });
 
 test('humanFormat abbreviates large counts to one decimal (K/M), leaves small counts as-is', () => {
   const [under1k] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 174 });
-  assert.match(under1k.toJSON().footer.text, /❤️ 174(?!\d)/);
+  assert.match(under1k.toJSON().fields[0].value, /❤️ 174(?!\d)/);
   const [thousands] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 20348 });
-  assert.match(thousands.toJSON().footer.text, /❤️ 20\.3K/);
+  assert.match(thousands.toJSON().fields[0].value, /❤️ 20\.3K/);
   const [millions] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 1_200_000 });
-  assert.match(millions.toJSON().footer.text, /❤️ 1\.2M/);
+  assert.match(millions.toJSON().fields[0].value, /❤️ 1\.2M/);
   const [exactRound] = buildEmbed({ siteName: 'Facebook', url: 'https://facebook.com/x', reactions: 20000 });
-  assert.match(exactRound.toJSON().footer.text, /❤️ 20K(?!\d)/);
+  assert.match(exactRound.toJSON().fields[0].value, /❤️ 20K(?!\d)/);
 });
 
 test('extractFacebookPost reads reactions/comments from the anonymous crawler-view fragment (no cookie)', async () => {
