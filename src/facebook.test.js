@@ -596,6 +596,34 @@ test("extractFacebookPost reads a caption whose message node has a __typename be
   }
 });
 
+// Regression test: a /photo/?fbid=... viewer page has the photo and poster but
+// not the post's caption (that lives on the post) — it does link to the post
+// though, right next to the photo's own id, so the caption is read from there.
+test("extractFacebookPost fetches the post a /photo/?fbid= page links to when the photo page has no caption", async () => {
+  const postUrl = 'https://www.facebook.com/somepage/posts/pfbidABC123';
+  const photoHtml = `
+    <html><head><title>Facebook</title></head>
+    <script>{"story":{"creation_time":1,"attachments":[]}}</script>
+    <script>{"__isNode":"Photo","id":"555","image":{"uri":"https:\\/\\/scontent.example\\/p.jpg"},"url":"https:\\/\\/www.facebook.com\\/somepage\\/posts\\/pfbidABC123"}</script>
+    <script>{"unrelated":"https:\\/\\/www.facebook.com\\/other\\/posts\\/pfbidZZZ"}</script>
+    </html>`;
+  const postHtml = `<html><head><meta property="og:title" content="Some Page"><meta property="og:description" content="The post caption"></head></html>`;
+  const original = global.fetch;
+  const fetched = [];
+  global.fetch = async (url) => {
+    fetched.push(url);
+    return { ok: true, url, text: async () => (url === postUrl ? postHtml : photoHtml) };
+  };
+  try {
+    const data = await extractFacebookPost('https://www.facebook.com/photo/?fbid=555&set=a.1');
+    assert.equal(data.description, 'The post caption');
+    assert.equal(data.profileUrl, 'https://www.facebook.com/somepage');
+    assert.deepEqual(fetched, ['https://www.facebook.com/photo/?fbid=555&set=a.1', postUrl]);
+  } finally {
+    global.fetch = original;
+  }
+});
+
 // Regression test: for a post with no og:title (the Comet SPA shell case, see
 // extractEmbeddedPostData), the author's display name never lands inside the
 // "story" object itself — it sits further away in the page, anchored to the

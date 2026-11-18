@@ -311,6 +311,20 @@ function extractProfileUrl(html, feedbackId, postUrl) {
   return m ? `https://www.facebook.com/${m[1]}` : null;
 }
 
+// A /photo/?fbid=... viewer page has the photo and poster but not the post's
+// caption (that belongs to the post). It does link to the post, a few hundred
+// chars from the photo's own id (the whole page can name other posts too, so
+// this is anchored to the id rather than taking the first /posts/ link).
+function findPostUrlNearPhoto(html, fbid) {
+  const m = findMatchNearId(
+    html,
+    fbid,
+    /"url":"(https:(?:\\?\/){2}www\.facebook\.com(?:\\?\/)[^"\\]+(?:\\?\/)posts(?:\\?\/)[^"\\?]+)"/,
+    2000
+  );
+  return m ? decodeJsonEscapedString(m[1]) : null;
+}
+
 function findNumberNearId(html, feedbackId, pattern, radius = 500) {
   const found = findMatchNearId(html, feedbackId, pattern, radius);
   return found ? Number(found[1]) : null;
@@ -578,7 +592,7 @@ async function resolveShortlinkRedirect(url, headers) {
 // just given up on — a fresh request often lands on a real page next time
 // (observed: the same URL alternating between real content and a login wall
 // across back-to-back requests), unlike a genuinely dead post/cookie.
-async function attemptExtractFacebookPost(url, key, { skipVideoVerification, cookie }) {
+async function attemptExtractFacebookPost(url, key, { skipVideoVerification, cookie, followPhotoPost = true }) {
   const headers = cookie
     ? {
         // A logged-in request gets Facebook's bot-fingerprint check applied (the
@@ -685,6 +699,18 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
     comments: engagement.comments,
     shares: engagement.shares,
   };
+
+  const photoFbid = extractFbidFromUrl(response.url) || extractFbidFromUrl(url);
+  const postUrl = followPhotoPost && !data.description && photoFbid && findPostUrlNearPhoto(html, photoFbid);
+  if (postUrl) {
+    const post = (await attemptExtractFacebookPost(postUrl, postUrl, { skipVideoVerification, cookie, followPhotoPost: false })).data;
+    if (post) {
+      data.description = post.description;
+      for (const field of ['profileUrl', 'reactions', 'comments', 'shares']) {
+        if (data[field] == null) data[field] = post[field];
+      }
+    }
+  }
   return { data, hitLoginWall: false };
 }
 
