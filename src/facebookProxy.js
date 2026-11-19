@@ -58,7 +58,7 @@ function buildProxyHtml(data, canonicalUrl) {
  * to crawlers; redirects everyone else (and any extraction failure) straight
  * to the real Facebook post.
  */
-async function handleProxyRequest(res, encodedPath, userAgent) {
+async function handleProxyRequest(res, encodedPath, userAgent, cookie = '') {
   let facebookUrl;
   try {
     facebookUrl = facebook.decodeProxyPath(encodedPath);
@@ -73,7 +73,7 @@ async function handleProxyRequest(res, encodedPath, userAgent) {
     return;
   }
 
-  const data = await facebook.extractFacebookPost(facebookUrl);
+  const data = await facebook.extractFacebookPost(facebookUrl, { cookie });
   if (!data) {
     res.writeHead(302, { Location: facebookUrl }).end();
     return;

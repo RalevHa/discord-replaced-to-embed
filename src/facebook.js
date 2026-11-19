@@ -224,6 +224,20 @@ function extractProgressiveVideoUrl(html, videoId) {
   return entries[0].url;
 }
 
+// A cookie page has no og:image at all, so a Reel's only thumbnail is this field, which
+// sits a few thousand chars after the video's own dash_mpd_debug anchor (see above). Stops
+// at the next video's anchor so an "up next" reel's thumbnail is never taken instead.
+function extractReelThumbnail(html, videoId) {
+  if (!videoId) return null;
+  const anchor = html.indexOf(`dash_mpd_debug.mpd?v=${videoId}&`);
+  if (anchor === -1) return null;
+  const next = html.indexOf('dash_mpd_debug.mpd?v=', anchor + 1);
+  const m = /"preferred_thumbnail":\{"image":\{"uri":"((?:[^"\\]|\\.)*)"/.exec(
+    html.slice(anchor, next === -1 ? anchor + 20000 : next)
+  );
+  return m ? decodeJsonEscapedString(m[1]) : null;
+}
+
 // Pulls the numeric video id out of a Facebook video/Reel URL — /reel/<id>, /videos/<id>
 // (optionally under a group's /pcb.<n>/ path), or a /watch?v=<id> query param. Returns null
 // for URL shapes with no video id (permalink/photo posts), which just skip the progressive-url
@@ -671,6 +685,8 @@ async function attemptExtractFacebookPost(url, key, { skipVideoVerification, coo
     extractVideoIdFromUrl(response.url) ||
     extractVideoIdFromUrl(url) ||
     extractVideoIdNearFeedback(html, findFeedbackId(html) || feedbackIdFromPostUrl(response.url));
+  const thumbnail = allImages.length ? null : extractReelThumbnail(html, videoId);
+  if (thumbnail) allImages.push(thumbnail);
   const progressiveVideo = taggedVideo ? null : extractProgressiveVideoUrl(html, videoId);
   const browserNativeVideo = taggedVideo || progressiveVideo ? null : extractBrowserNativeVideoUrl(html);
   const browserNativeVideoOk =

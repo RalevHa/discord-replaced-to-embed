@@ -127,3 +127,18 @@ test('handleProxyRequest returns 400 for an undecodable path', async () => {
   await handleProxyRequest(res, '%%%not-base64%%%', 'Mozilla/5.0 (compatible; Discordbot/2.0)');
   assert.equal(res.statusCode, 400);
 });
+
+test('handleProxyRequest fetches the post with the configured cookie', async () => {
+  const original = global.fetch;
+  let sentCookie;
+  global.fetch = async (_url, opts) => {
+    sentCookie = opts && opts.headers && opts.headers.Cookie;
+    return { ok: true, text: async () => '<html><head><meta property="og:title" content="A Reel" /></head></html>' };
+  };
+  try {
+    await handleProxyRequest(fakeResponse(), encodeProxyPath(uniquePostUrl()), 'Discordbot/2.0', 'c_user=1; xs=2');
+    assert.equal(sentCookie, 'c_user=1; xs=2');
+  } finally {
+    global.fetch = original;
+  }
+});

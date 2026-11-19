@@ -57,7 +57,7 @@ function startHealthServer(port, ctx) {
 
       const match = FB_PROXY_PATH.exec(req.url || '');
       if (match) {
-        facebookProxy.handleProxyRequest(res, match[1], req.headers['user-agent']).catch((err) => {
+        facebookProxy.handleProxyRequest(res, match[1], req.headers['user-agent'], config.facebookCookie).catch((err) => {
           console.error('Facebook proxy error:', err);
           if (!res.headersSent) res.writeHead(500).end('error');
         });

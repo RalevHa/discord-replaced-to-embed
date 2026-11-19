@@ -348,6 +348,23 @@ test('extractFacebookPost prefers the HD progressive_url (logged-in cookie page)
   }
 });
 
+test("extractFacebookPost uses the reel's own preferred_thumbnail as the image on a cookie page with no og:image, ignoring an up-next reel's", async () => {
+  const url = uniquePostUrl('reel');
+  const id = url.split('/').pop();
+  const restore = mockFetch(`
+    <html><head><meta property="og:title" content="A Reel" /></head>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=${id}&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/hd.mp4","metadata":{"quality":"HD"}}],"preferred_thumbnail":{"image":{"uri":"https:\\/\\/scontent.example\\/own.jpg?a=1\\u0026b=2"}}}</script>
+    <script>{"dash_manifest_urls":[{"manifest_url":"https:\\/\\/www.facebook.com\\/dash_mpd_debug.mpd?v=${id}9&dummy=.mpd"}],"progressive_urls":[{"progressive_url":"https:\\/\\/scontent.example\\/other.mp4","metadata":{"quality":"HD"}}],"preferred_thumbnail":{"image":{"uri":"https:\\/\\/scontent.example\\/other.jpg"}}}</script>
+    </html>
+  `);
+  try {
+    const data = await extractFacebookPost(url, { cookie: 'c_user=1; xs=2' });
+    assert.equal(data.image, 'https://scontent.example/own.jpg?a=1&b=2');
+  } finally {
+    restore();
+  }
+});
+
 test("extractFacebookPost's progressive_url lookup ignores a different video's block (e.g. an 'up next' reel bundled in the same page)", async () => {
   const url = uniquePostUrl('reel');
   const id = url.split('/').pop();
